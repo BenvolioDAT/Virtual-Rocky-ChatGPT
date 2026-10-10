@@ -1,0 +1,44 @@
+# PlatformIO
+firmware/.pio/
+firmware/.vscode/
+
+# Python
+__pycache__/
+*.pyc
+server/.venv/
+.venv/
+
+# Secrets — never commit WiFi or API credentials
+firmware/include/secrets.h
+.env
+.env.*
+!.env.example
+
+# macOS and editors
+.DS_Store
+.vscode/
+.idea/
+
+# Logs and audio captures
+*.log
+*.wav
+
+# Mic debug recordings
+server/debug/
+
+# Session file some tools drop at the repo root
+:memory:.ses
+
+# Pan/tilt CAD (Fusion archive, STLs, generator): kept locally and in Fusion, not in the repo
+docs/cad/
+
+# Codex CLI project config (written by the Fusion MCP add-in)
+.codex/
+
+# Desktop builds
+build/
+dist/
+*.spec
+# Protected desktop sign-in credentials
+.rocky-auth/
+server/.test-tmp/
