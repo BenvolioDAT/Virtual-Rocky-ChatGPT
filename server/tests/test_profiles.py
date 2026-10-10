@@ -41,7 +41,7 @@ class ProfileTests(unittest.TestCase):
         (self.folder/'rocky.json').unlink(); self.manager.reload_profiles()
         self.assertEqual(self.manager.get_robot_name(),'Rocky')
     def test_invalid_optional_fields_and_no_credentials(self):
-        for key,value in [('voice',{'api_key':'secret'}),('reply_max_sentences',False),('wake_phrases',[]),('example_replies','text'),('description',7)]:
+        for key,value in [('reply_max_sentences',False),('wake_phrases',[]),('example_replies','text'),('description',7)]:
             data=copy.deepcopy(ROCKY); data[key]=value
             with self.assertRaises(ValueError): validate(data)
     def test_persistence_and_removed_profile(self):
@@ -63,13 +63,7 @@ class ProfileTests(unittest.TestCase):
             self.assertEqual(ears.strip_wake_word('Hey Nova! test'),(True,'test'))
             self.assertFalse(ears.strip_wake_word('Hey Rocky!')[0])
             self.assertEqual(personality.LINES['wake'],'Hello!')
-            self.assertEqual(config.TTS_VOICE_ID,'custom-voice')
-            self.assertEqual(config.TTS_TEMPERATURE,.2)
-            self.assertEqual(config.TTS_TOP_P,.8)
-            with patch.dict('os.environ',{'FISH_AUDIO_API_KEY':'test'}):
-                self.assertTrue(mouth.fish_available())
-                self.nova['voice']['fish_voice_id']=''; self.write('nova',self.nova); self.manager.reload_profiles()
-                self.assertFalse(mouth.fish_available())
+            self.assertNotIn('voice',self.manager.get_active_profile())
             for profile in self.manager.list_profiles():
                 self.manager.set_active_profile(profile['id'])
                 prompt=personality.system_prompt()
@@ -145,20 +139,6 @@ class ProfileTests(unittest.TestCase):
                 await task
                 self.assertEqual(self.manager.active_id,'nova')
         with self.patches(): asyncio.run(check())
-
-    def test_fish_request_uses_profile_settings(self):
-        captured=[]
-        class Response:
-            def __enter__(self): return self
-            def __exit__(self,*args): pass
-            def read(self,*args): return b''
-        def request(req,**kwargs): captured.append(json.loads(req.data)); return Response()
-        with self.patches(), patch.dict('os.environ',{'FISH_AUDIO_API_KEY':'test'}), patch('brain.mouth.urllib.request.urlopen',request):
-            self.manager.set_active_profile('nova')
-            list(mouth._fish_stream('Hello.'))
-        self.assertEqual(captured[0]['reference_id'],'custom-voice')
-        self.assertEqual(captured[0]['temperature'],.2)
-        self.assertEqual(captured[0]['top_p'],.8)
 
     def test_invalid_saved_id_is_safe(self):
         self.store.save({'active_personality':[]})

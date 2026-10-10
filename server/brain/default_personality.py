@@ -65,5 +65,4 @@ ROCKY = {'id': 'rocky',
                   'sleep': 'I sleep. You watch. Wake me when you find bug.',
                   'track_on': 'Yes yes yes. Eyes on {human_name}.',
                   'track_off': 'Okay. Eyes free.'},
- 'voice': {'fish_voice_id': '6dd07916890445e59c5f019ad0fc7879', 'temperature': 0.4, 'top_p': 0.6},
  'reply_max_sentences': 3}

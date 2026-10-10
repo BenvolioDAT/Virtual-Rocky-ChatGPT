@@ -7,6 +7,8 @@ from PySide6.QtCore import Qt, QTimer, Signal, QObject, QPointF, QRectF
 from .ui_preferences import PRESETS, visible_position
 from . import config
 from .personality_manager import manager
+from .voice_manager import manager as voices
+from .face_theme_manager import manager as themes
 from PySide6.QtGui import QColor, QPainter, QPen, QPainterPath, QFont, QFontDatabase
 from PySide6.QtWidgets import QWidget, QMenu, QInputDialog, QPushButton, QMessageBox
 
@@ -41,7 +43,6 @@ class FaceWindow(QWidget):
         self.auth_info = None
         self.signin = QPushButton('Continue with ChatGPT', self)
         self.signin.setGeometry(15, 8, 230, 27)
-        self.signin.setStyleSheet('QPushButton { background: #102522; color: #b4f9ee; border: 1px solid #618680; border-radius: 6px; font: 9pt "Segoe UI"; }')
         self.signin.hide()
         self.signin.clicked.connect(lambda: self.control('chatgpt cancel' if self.auth_info and self.auth_info.get('busy') else 'chatgpt login'))
         self.drag = None
@@ -69,12 +70,17 @@ class FaceWindow(QWidget):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.tick)
         self.timer.start(33)
+        self.apply_theme()
     def on_event(self, e):
         kind = e.get('type')
         if kind == 'personality':
             self.setWindowTitle('Virtual ' + manager.get_robot_name())
             self.status = e['text']
             self.setToolTip(self.status)
+        elif kind == 'presentation':
+            self.setToolTip(e['text'])
+            self.apply_theme()
+        elif kind == 'companion_info': QMessageBox.information(self, 'Companion Setup', e['text'])
         elif kind == 'emotion':
             self.emotion = e.get('name') if e.get('name') in config.EMOTIONS else 'neutral'
             self.variant = random.randrange(3)
@@ -127,12 +133,13 @@ class FaceWindow(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.fillRect(self.rect(), QColor('#050a0c'))
+        theme = themes.get_active_theme()
+        p.fillRect(self.rect(), QColor(theme['background']))
         scale = min(self.width()/260, self.height()/180)
         p.translate((self.width()-260*scale)/2, (self.height()-180*scale)/2)
         p.scale(scale, scale)
-        color = QColor('#b4f9ee')
-        p.setPen(QPen(color, 3)); p.setBrush(color)
+        color = QColor(theme['primary'])
+        p.setPen(QPen(color, theme["line_width"])); p.setBrush(color)
         closed = self.asleep or time.monotonic() < self.blink_until
         for i, x in enumerate((78, 182)):
             y = 70
@@ -144,7 +151,7 @@ class FaceWindow(QWidget):
             if self.emotion == 'skeptical' and i == 0: h = 12
             if self.emotion == 'confused' and i == self.variant % 2: h = 20
             p.drawRoundedRect(QRectF(x-25, y-h/2, 50, h), 10, 10)
-            p.setBrush(QColor('#050a0c'))
+            p.setBrush(QColor(theme['background']))
             gx, gy = self.gaze
             if time.monotonic() < self.glance_until and self.gaze == (0.0,0.0): gx = self.glance
             if self.animation == 'watching_screen': gy = .25
@@ -166,7 +173,7 @@ class FaceWindow(QWidget):
             path.quadTo(130, 137 if self.emotion == 'happy' else 103 if self.emotion == 'sad' else 123, 151, 120)
             p.drawPath(path)
         p.setFont(QFont('Segoe UI', max(9,round(6/scale))))
-        p.setPen(QColor('#618680'))
+        p.setPen(QColor(theme['secondary']))
         if self.auth_info and self.auth_info.get('signed_in') and not self.auth_info.get('busy'):
             p.drawText(QRectF(8, 8, 244, 26), Qt.AlignmentFlag.AlignCenter, 'Using ChatGPT plan')
         p.drawText(QRectF(8, 136, 244, 16), Qt.AlignmentFlag.AlignCenter, ('Vision: ' if self.width() < 240 else 'Desktop Vision: ') + self.screen_status)
@@ -197,7 +204,7 @@ class FaceWindow(QWidget):
     def resizeEvent(self, e):
         scale = min(self.width()/260,self.height()/180)
         self.signin.setGeometry(round((self.width()-260*scale)/2+15*scale),round(8*scale),round(230*scale),max(18,round(27*scale)))
-        self.signin.setStyleSheet('QPushButton { background: #102522; color: #b4f9ee; border: 1px solid #618680; border-radius: 6px; font: '+str(max(6,9*scale))+'pt "Segoe UI"; }')
+        self.apply_theme()
         super().resizeEvent(e)
     def set_preset(self, name):
         self.size_preset = name
@@ -231,6 +238,8 @@ class FaceWindow(QWidget):
             menu.addAction('Sign out of ChatGPT', lambda: self.control('chatgpt logout'))
             menu.addSeparator()
         self.add_personality_menu(menu)
+        self.add_presentation_menus(menu)
+        menu.addAction('Companion Setup…', lambda: self.control('companion status'))
         self.add_screen_menu(menu)
         top = menu.addAction('Always on top'); top.setCheckable(True)
         top.setChecked(bool(self.windowFlags() & Qt.WindowType.WindowStaysOnTopHint))
@@ -265,6 +274,29 @@ class FaceWindow(QWidget):
         submenu.addAction('Reload Personalities', lambda: self.control('personality reload'))
         submenu.addAction('Open Personality Folder', lambda: self.control('personality folder'))
         return submenu
+
+    def apply_theme(self):
+        theme = themes.get_active_theme()
+        scale = min(self.width()/260,self.height()/180)
+        self.signin.setStyleSheet('QPushButton { background: '+theme['background']+'; color: '+theme['primary']+'; border: 1px solid '+theme['secondary']+'; border-radius: 6px; font: '+str(max(6,9*scale))+'pt "Segoe UI"; }')
+        self.update()
+
+    def add_presentation_menus(self, menu):
+        result=[]
+        for title, command, selected, reload_label, folder_label in (
+            ('Voice','voice',voices,'Reload Voices','Open Voice Folder'),
+            ('Face Theme','theme',themes,'Reload Face Themes','Open Face Theme Folder')):
+            submenu=menu.addMenu(title)
+            for profile in selected.list_profiles():
+                action=submenu.addAction(profile['display_name'])
+                action.setCheckable(True); action.setChecked(profile['id']==selected.active_id)
+                action.triggered.connect(lambda checked=False,c=command,i=profile['id']: self.control(c+' '+i))
+            submenu.addSeparator()
+            if command == 'voice': submenu.addAction('Test Voice',lambda: self.control('voice test'))
+            submenu.addAction(reload_label,lambda checked=False,c=command: self.control(c+' reload'))
+            submenu.addAction(folder_label,lambda checked=False,c=command: self.control(c+' folder'))
+            result.append(submenu)
+        return result
 
     def add_screen_menu(self, menu):
         screen_menu = menu.addMenu('Screen Vision: ' + self.screen_status)

@@ -1,0 +1,9 @@
+{
+  "id": "red",
+  "display_name": "Red / Alert",
+  "description": "Red / Alert OLED appearance.",
+  "background": "#0d0303",
+  "primary": "#ff7777",
+  "secondary": "#8a3939",
+  "line_width": 3
+}

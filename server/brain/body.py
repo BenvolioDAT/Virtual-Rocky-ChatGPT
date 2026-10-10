@@ -12,6 +12,7 @@ class PhysicalBody:
     virtual = False
     def __init__(self, socket_provider): self.socket_provider = socket_provider
     async def command(self, payload):
+        if payload.get('type') in ('presentation','companion_info'): return True
         if payload.get('type') == 'emotion':
             mapping = {'excited':'happy', 'confused':'thinking', 'curious':'surprised',
                        'worried':'sad', 'skeptical':'thinking'}

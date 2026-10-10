@@ -25,16 +25,12 @@ def validate(data):
     if not data.get('wake_phrases'): raise ValueError('wake_phrases required')
     lines=data.get('canned_lines')
     if not isinstance(lines,dict) or any(not isinstance(lines.get(k),str) or not lines[k].strip() for k in ('wake','sleep','track_on','track_off')): raise ValueError('four canned_lines required')
-    voice=data.get('voice',{})
-    if not isinstance(voice,dict) or set(voice)-{'fish_voice_id','temperature','top_p'}: raise ValueError('invalid voice settings')
-    if not isinstance(voice.get('fish_voice_id',''),str): raise ValueError('fish_voice_id must be text')
-    for key,default in (('temperature',.4),('top_p',.6)):
-        v=voice.get(key,default)
-        if type(v) not in (int,float) or not 0 <= v <= 1: raise ValueError(f'{key} must be between 0 and 1')
+    if 'voice' in data:
+        logging.getLogger(__name__).warning('Personality %s: deprecated voice field ignored', data['id'])
     limit=data.get('reply_max_sentences',3)
     if type(limit) is not int or not 1 <= limit <= 10: raise ValueError('reply_max_sentences must be 1 to 10')
     if not isinstance(data.get('description',''),str): raise ValueError('description must be text')
-    return copy.deepcopy(data)
+    return copy.deepcopy({k:v for k,v in data.items() if k != 'voice'})
 
 
 class PersonalityManager:
@@ -74,8 +70,7 @@ class PersonalityManager:
             return self.list_profiles()
     def _persist(self):
         try:
-            data=self.preferences.load(); data['active_personality']=self.active_id
-            self.preferences.save(data)
+            self.preferences.save({'active_personality':self.active_id})
         except OSError as exc: self._report(f'Cannot save personality selection: {exc}')
     def list_profiles(self):
         with self._lock: return [copy.deepcopy(p) for p in sorted(self._profiles.values(),key=lambda p:(p['id']!='rocky',p['display_name']))]
@@ -93,8 +88,6 @@ class PersonalityManager:
     def get_canned_line(self,name):
         from . import config
         return self.get_active_profile()['canned_lines'][name].replace('{human_name}',config.HUMAN_NAME)
-    def get_voice_settings(self):
-        return dict(fish_voice_id='',temperature=.4,top_p=.6) | self.get_active_profile().get('voice',{})
     def get_reply_limit(self): return self.get_active_profile().get('reply_max_sentences',3)
     def get_system_prompt(self):
         from . import config

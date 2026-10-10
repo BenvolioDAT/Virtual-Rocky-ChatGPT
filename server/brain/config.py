@@ -46,7 +46,7 @@ MODEL = os.environ.get("LLM_MODEL", "anthropic/claude-haiku-4.5")
 PORT = 8765
 
 # Rocky's voice and how much he says. The character itself (system prompt,
-# canned lines) is in personality.py.
+# canned lines) is in personality.py. Voice settings live in voices/*.json.
 #   TTS_VOICE_ID  Fish Audio (fish.audio) voice: open the voice's page on the
 #                 site and copy the 32-char ID from the URL. Needs
 #                 FISH_AUDIO_API_KEY in server/.env.
@@ -67,12 +67,9 @@ PORT = 8765
 #                 boost above ~1.5 kHz, where speech clarity lives, 0 = off.
 #                 Lifts a muffled voice; too much sounds thin and hissy.
 # The console page has sliders for level / bass cut / presence that apply
-# live; set the winners here to keep them.
-TTS_LEVEL = 0.12
-TTS_HIGHPASS_HZ = 0.0
-TTS_PRESENCE_DB = 0.0
+# live; edit the selected voice profile to keep them.
 
-# Text-to-speech. The voice comes from Fish Audio (TTS_VOICE_ID above).
+# Text-to-speech. The selected voice profile controls provider and tuning.
 TTS_FALLBACK_VOICE = "Fred"  # built-in voice used until Fish Audio is set up: a macOS `say`
                              # voice name (`say -v ?` lists them); Windows and Linux use their default
 # Loudness. Fish's level wanders from line to line, so the audio goes through
@@ -195,6 +192,8 @@ def __getattr__(name):
         robot = manager.get_robot_name().lower()
         return [f'{robot} sleep', f'{robot} go to sleep', 'go to sleep', 'goodnight', 'good night', 'stop listening']
     if name == 'REPLY_MAX_SENTENCES': return manager.get_reply_limit()
-    voice_keys={'TTS_VOICE_ID':'fish_voice_id','TTS_TEMPERATURE':'temperature','TTS_TOP_P':'top_p'}
-    if name in voice_keys: return manager.get_voice_settings()[voice_keys[name]]
+    voice_keys={'TTS_VOICE_ID':'fish_voice_id','TTS_TEMPERATURE':'temperature','TTS_TOP_P':'top_p','TTS_LEVEL':'level','TTS_HIGHPASS_HZ':'highpass_hz','TTS_PRESENCE_DB':'presence_db'}
+    if name in voice_keys:
+        from .voice_manager import manager as voices
+        return voices.get_active_profile()[voice_keys[name]]
     raise AttributeError(name)

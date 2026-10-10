@@ -42,3 +42,5 @@ dist/
 # Protected desktop sign-in credentials
 .rocky-auth/
 server/.test-tmp/
+
+server/.test-deps/

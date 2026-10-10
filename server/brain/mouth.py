@@ -1,11 +1,11 @@
 """Mouth: turn the robot's words into sound.
 
 Two voices:
-  * Fish Audio (active profile's voice, config.TTS_VOICE_ID) when
+  * Fish Audio (selected voice profile) when
     FISH_AUDIO_API_KEY is set. Plain HTTPS POST asking for raw 16 kHz PCM. The response body
     streams, so the first audio arrives ~0.3 s in, long before the sentence
     is finished, and is passed straight on to the speaker.
-  * the computer's built-in voice as the fallback so the loop is audible
+  * the computer's built-in voice as an explicit system profile or fallback so the loop is audible
     before that's set up: `say` on macOS, Windows' speech engine through
     PowerShell, espeak-ng on Linux.
 
@@ -36,13 +36,15 @@ import certifi
 import numpy as np
 
 from . import config
+from .voice_manager import manager as voice_manager
 
 SAMPLE_RATE = 16_000
 FISH_TTS_URL = "https://api.fish.audio/v1/tts"
 
 
-def fish_available() -> bool:
-    return bool(config.TTS_VOICE_ID and os.environ.get("FISH_AUDIO_API_KEY"))
+def fish_available(settings=None) -> bool:
+    settings = settings or voice_manager.get_active_profile()
+    return bool(settings["provider"] == "fish" and settings["fish_voice_id"] and os.environ.get("FISH_AUDIO_API_KEY"))
 
 
 _MARKUP = re.compile(r"[*_`#~<>\[\]{}|\\]")
@@ -61,17 +63,18 @@ def clean_for_tts(text: str) -> str:
     return text
 
 
-def _fish_stream(text: str) -> Iterator[bytes]:
+def _fish_stream(text: str, settings=None) -> Iterator[bytes]:
     """Raw 16 kHz PCM from Fish Audio, yielded as the server produces it."""
+    settings = settings or voice_manager.get_active_profile()
     body = json.dumps(
         {
             "text": text,
-            "reference_id": config.TTS_VOICE_ID,
+            "reference_id": settings["fish_voice_id"],
             "format": "pcm",          # headerless s16le at sample_rate: nothing to parse
             "sample_rate": SAMPLE_RATE,
             "latency": "balanced",    # a little faster to the first byte than "normal"
-            "temperature": config.TTS_TEMPERATURE,
-            "top_p": config.TTS_TOP_P,
+            "temperature": settings["temperature"],
+            "top_p": settings["top_p"],
         }
     ).encode()
     req = urllib.request.Request(
@@ -184,9 +187,10 @@ class Leveler:
     CEILING = 0.95      # never let a chunk's peak exceed this: the chunk is turned down, not bent
 
     def __init__(self) -> None:
-        # Read once per reply, so the console's sliders apply from the next one.
-        self.level = config.TTS_LEVEL
-        self.eq = Equalizer(config.TTS_HIGHPASS_HZ, config.TTS_PRESENCE_DB)
+        # Snapshot once per reply; live selection and tuning apply to the next reply.
+        self.settings = voice_manager.get_active_profile()
+        self.level = self.settings["level"]
+        self.eq = Equalizer(self.settings["highpass_hz"], self.settings["presence_db"])
         self.env = 0.0      # loudness estimate; 0 = nothing heard yet
         self.gain = 1.0
 
@@ -310,9 +314,9 @@ def stream(text: str, leveler: Leveler | None = None) -> Iterator[bytes]:
     try:
         chunks: Iterator[bytes] | None = None
         first = b""
-        if fish_available():
+        if fish_available(leveler.settings):
             try:
-                chunks = _fish_stream(text)
+                chunks = _fish_stream(text, leveler.settings)
                 first = next(chunks, b"")
             except Exception as e:  # network, auth, bad voice id... still speak
                 print(f"(fish audio failed, using the built-in voice: {e})")

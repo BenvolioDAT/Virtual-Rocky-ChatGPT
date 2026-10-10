@@ -180,6 +180,21 @@ async def handle_robot(websocket: websockets.ServerConnection) -> None:
             pick_mic_source()
 
 
+def open_profile_folder(folder):
+    import subprocess
+    if sys.platform == 'win32': os.startfile(str(folder))
+    elif sys.platform == 'darwin': subprocess.Popen(['open',str(folder)])
+    else: subprocess.Popen(['xdg-open',str(folder)])
+
+
+def companion_status():
+    from .personality_manager import manager as personalities
+    from .voice_manager import manager as voices
+    from .face_theme_manager import manager as themes
+    p, v, t = personalities.get_active_profile(), voices.get_active_profile(), themes.get_active_theme()
+    return f"Personality: {p['display_name']}\nRobot name: {p['robot_name']}\nVoice: {v['display_name']}\nVoice provider: {v['provider']}\nFace theme: {t['display_name']}"
+
+
 def personality_status():
     from .personality_manager import manager
     text = 'Personality changed to ' + manager.get_active_profile()['display_name'] + '.'
@@ -196,15 +211,33 @@ async def handle_console_line(line: str) -> bool:
     cmd = cmd.lower()
     arg = arg.strip()
 
+    if cmd == 'companion':
+        text = companion_status()
+        print(text)
+        await send_to_robot({'type':'companion_info','text':text})
+        return True
+    if cmd in ('voice','theme'):
+        from .voice_manager import manager as voices
+        from .face_theme_manager import manager as themes
+        selected = voices if cmd == 'voice' else themes
+        if arg == 'list':
+            print('\n'.join(p['id']+': '+p['display_name'] for p in selected.list_profiles()))
+        elif arg == 'folder': open_profile_folder(selected.folder)
+        elif cmd == 'voice' and arg == 'test': await say('Voice test. Hello, friend.')
+        else:
+            if arg == 'reload': selected.reload_profiles()
+            elif arg: selected.set_active_profile(arg)
+            text = companion_status()
+            if selected.errors: text += '\n' + '\n'.join(selected.errors)
+            print(text)
+            await send_to_robot({'type':'presentation','text':text})
+        return True
     if cmd == "personality":
         from .personality_manager import manager
         if arg == 'list':
             print('\n'.join(p['id'] + ': ' + p['display_name'] for p in manager.list_profiles()))
         elif arg == 'folder':
-            import subprocess
-            if sys.platform == 'win32': os.startfile(str(manager.folder))
-            elif sys.platform == 'darwin': subprocess.Popen(['open',str(manager.folder)])
-            else: subprocess.Popen(['xdg-open',str(manager.folder)])
+            open_profile_folder(manager.folder)
         elif arg:
             async with turn_lock:
                 # Interrupted streams may still be unwinding in their worker.
@@ -744,8 +777,10 @@ async def _console_command(action: str, payload: dict) -> dict:
         if key not in VOICE_TUNABLE:
             raise ValueError(f"voice settings: {', '.join(VOICE_TUNABLE)}")
         value = _number(payload, "value", *VOICE_TUNABLE[key])
-        setattr(config, key, value)
-        print(f"console: {key} = {value:g} (until restart; set it in config.py to keep)")
+        from .voice_manager import manager as voices
+        keys={'TTS_LEVEL':'level','TTS_HIGHPASS_HZ':'highpass_hz','TTS_PRESENCE_DB':'presence_db'}
+        voices.update_tuning(keys[key],value)
+        print(f"console: {key} = {value:g} (until reload/restart; edit the voice profile to keep)")
     else:
         raise ValueError(f"no such control: {action}")
     return {}

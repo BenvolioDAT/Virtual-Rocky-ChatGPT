@@ -1,0 +1,12 @@
+{
+  "id": "rocky_voice",
+  "display_name": "Rocky Voice",
+  "description": "Existing Rocky Fish Audio voice; system fallback when unavailable.",
+  "provider": "fish",
+  "fish_voice_id": "6dd07916890445e59c5f019ad0fc7879",
+  "temperature": 0.4,
+  "top_p": 0.6,
+  "level": 0.12,
+  "highpass_hz": 0,
+  "presence_db": 0
+}

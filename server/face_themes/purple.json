@@ -1,0 +1,9 @@
+{
+  "id": "purple",
+  "display_name": "Purple",
+  "description": "Purple OLED appearance.",
+  "background": "#08030d",
+  "primary": "#cf8cff",
+  "secondary": "#70488a",
+  "line_width": 3
+}

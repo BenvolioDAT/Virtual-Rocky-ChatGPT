@@ -291,19 +291,19 @@ server cuts anything past it before it is spoken.
 Rocky's voice is a community-uploaded fan clone on
 [Fish Audio](https://fish.audio), not something this project owns. It may
 disappear one day, and it is for personal use. Open any voice's page there,
-copy the 32-character ID from the URL into `TTS_VOICE_ID` in `config.py`,
+copy the reference ID from the URL into `fish_voice_id` in a `server/voices/` profile,
 and put your Fish key in `server/.env`.
-`TTS_TEMPERATURE` and `TTS_TOP_P` trade steadiness for expressiveness.
+The profile's `temperature` and `top_p` trade steadiness for expressiveness.
 Without a Fish key he uses the computer's built-in voice: on macOS,
 `TTS_FALLBACK_VOICE` picks one (`say -v ?` lists them); Windows uses its
 default voice; Linux uses `espeak-ng` if installed.
 
 The robot's speaker is tiny, so a deep voice turns into rattle. Three knobs
-in `config.py` shape the audio before it reaches the speaker: `TTS_LEVEL`
-(loudness he is held to), `TTS_HIGHPASS_HZ` (bass cut, try 250 to 350 for a
-deep voice), and `TTS_PRESENCE_DB` (lift for a muffled voice). The console
+in the selected voice JSON shape the audio before it reaches the speaker: `level`
+(loudness he is held to), `highpass_hz` (bass cut, try 250 to 350 for a
+deep voice), and `presence_db` (lift for a muffled voice). The console
 page has sliders for all three so you can dial them in while he talks, then
-copy the winners into config. If a voice keeps misbehaving, `DEBUG_SAVE_TTS`
+copy the winners into the selected voice profile. If a voice keeps misbehaving, `DEBUG_SAVE_TTS`
 in `config.py` keeps the last 30 spoken clips and their text in
 `server/debug/tts/` (git-ignored) so you can listen back.
 
@@ -554,7 +554,7 @@ initial default. Original starters are Friendly Companion (Nova), Engineer
 (Gizmo), Gamer Buddy (Pixel), and Custom Example (Echo). The selected item is checked.
 Switching needs no restart: the current spoken turn finishes, old conversation
 and temporary visual-source context clear, the face sleeps, and name, wake words,
-voice, canned lines and window title update. Say the new character's wake phrase.
+canned lines and window title update. Voice and face theme remain selected independently. Say the new character's wake phrase.
 Interrupted network streams may briefly delay switching while they finish closing.
 Screen Watch's local buffer stays available. All characters share the existing
 emotions, tool availability, Screen Vision privacy controls and visual honesty rules.
@@ -585,7 +585,7 @@ Local console commands: `personality`, `personality list`, `personality gamer`,
 | `example_replies` | Optional list of spoken examples with emotion tags. |
 | `wake_phrases` | Required nonempty list, including any desired transcription aliases. |
 | `canned_lines` | Required nonempty `wake`, `sleep`, `track_on`, `track_off` strings. |
-| `voice` | Optional `fish_voice_id`, `temperature`, `top_p`; numbers range 0-1, defaults 0.4/0.6. |
+| `voice` | Deprecated legacy field: accepted with a warning and ignored. Use a separate voice profile. |
 | `reply_max_sentences` | Optional integer 1-10, default 3; enforced by both providers. |
 
 `{human_name}` in character text/examples/canned lines uses the existing private
@@ -596,10 +596,8 @@ wake to "Hey Rocky" unless that alias is explicitly in Nova's profile.
 
 Fish Audio uses the existing `FISH_AUDIO_API_KEY` secret configuration.
 **Never store API keys in profile files.** Unknown fields (including credentials)
-are rejected. Empty or omitted Fish voice ID uses the existing operating-system
-voice fallback. Rocky retains the project's existing voice; original starters
-have no commercial character voice IDs. Add an ID you have permission to use for
-custom voices. Speaker EQ and loudness remain shared controls.
+are rejected. Voice selection, Fish reference IDs, speaker EQ and loudness now belong
+to separate voice profiles; see Customizing Your Companion below.
 
 Complete example (copy and change its ID, name, wake phrases and character prompt):
 
@@ -623,11 +621,49 @@ Complete example (copy and change its ID, name, wake phrases and character promp
     "track_on": "Face tracking on.",
     "track_off": "Face tracking off."
   },
-  "voice": {
-    "fish_voice_id": "",
-    "temperature": 0.4,
-    "top_p": 0.6
-  },
   "reply_max_sentences": 3
 }
 ```
+
+## Customizing Your Companion
+
+Choose three independent layers from the face's right-click menu:
+
+| Layer | Controls | Profile folder |
+| --- | --- | --- |
+| Personality | Who it is: name, wake phrases, character prompt, examples, canned lines, sentence limit | `server/personalities/` |
+| Voice | How it sounds: TTS provider, reference ID, synthesis settings, volume target and EQ | `server/voices/` |
+| Face Theme | How it looks: OLED colors and line width | `server/face_themes/` |
+
+For example, choose **Engineer + Rocky Voice + Green OLED**, or **Gamer Buddy (Pixel) + Default System Voice + Purple**. Changing any layer keeps the other two selections. Only personality changes clear conversation history and reset wake state; voices and themes cannot alter prompts, capabilities, or tool safety. All emotions and animations use the same renderer.
+
+Selections restore independently after restart using `active_personality`, `active_voice`, and `active_face_theme` in the existing window preferences. A removed/invalid selected voice falls back to Default System Voice; a missing theme falls back to Classic Cyan; a missing personality falls back to Rocky. Each fallback leaves the other selections alone. First-time migration selects Rocky Voice for saved Rocky identity (including the original default install), and System Voice for other identities. Old personality `voice` fields are accepted with a logged deprecation warning and ignored. Bundled Rocky's existing reference ID now lives in `server/voices/rocky.json`.
+
+Use **Companion Setup…** to see all selections. **Voice → Test Voice** speaks “Voice test. Hello, friend.” through TTS without asking the language model. System Voice deliberately uses local operating-system speech even if Fish credentials exist. Fish profiles fall back to operating-system speech when credentials or a reference ID are missing, or the request fails. A reply snapshots voice settings when it starts; switching takes effect on the next reply without changing current audio.
+
+To customize, use **Open Personality Folder**, **Open Voice Folder**, or **Open Face Theme Folder**. Copy an existing JSON file, give it a unique lowercase `id` and a `display_name`, edit its data, then use the matching **Reload** action. Reload discovers new files and updates active settings. Invalid JSON, duplicate IDs, unknown fields, and out-of-range settings produce warnings in the console; reload status includes presentation-profile warnings. Profiles contain data only, never executable code. Packaged builds keep these folders alongside the executable.
+
+Voice profiles support `provider: "system"` or `"fish"`, `fish_voice_id` (empty is allowed for the example template), `temperature` and `top_p` (0–1), `level` (0.01–0.4), `highpass_hz` (0–600), and `presence_db` (-12–12). **Do not put API keys into profiles.** Keep `FISH_AUDIO_API_KEY` in the existing secret configuration (`server/.env` for source installs). The example Fish profile has no invented reference ID. Console speaker-tuning controls apply to the active voice until reload/restart; edit its JSON to retain those values.
+
+Themes support `background`, `primary`, and `secondary` as `#RRGGBB` colors, plus `line_width` (1–8). Starter themes: Classic Cyan, Green OLED, Amber Terminal, Purple, Blue, and Red / Alert. Geometry, glow, and combined presets are future enhancements; this version keeps shared face geometry and avoids a second source of selection state. Physical robot mode uses personality and voice normally and ignores desktop appearance updates; no firmware change is needed.
+
+Local console commands (no language-model request):
+
+```text
+personality list
+personality gamer
+personality reload
+personality folder
+voice list
+voice rocky_voice
+voice reload
+voice folder
+voice test
+theme list
+theme purple
+theme reload
+theme folder
+companion status
+```
+
+Architecturally, `PersonalityManager` remains the character authority. `VoiceManager` and `FaceThemeManager` share a small validated-data loader, use separate preference keys, and have no dependency on each other or the personality manager. Runtime and UI coordinate selections. Additional TTS providers can be added through provider validation and dispatch without embedding voice decisions in character profiles.

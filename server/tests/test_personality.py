@@ -45,16 +45,16 @@ class SpeakerTuningTests(unittest.TestCase):
         self.assertTrue(np.allclose(whole, chunked, atol=1e-6))
 
     def test_leveler_reads_config_when_built(self):
-        saved = (config.TTS_LEVEL, config.TTS_HIGHPASS_HZ, config.TTS_PRESENCE_DB)
-        try:
-            config.TTS_LEVEL, config.TTS_HIGHPASS_HZ, config.TTS_PRESENCE_DB = 0.22, 300.0, 6.0
-            lev = mouth.Leveler()
-            self.assertEqual(lev.level, 0.22)
-            self.assertEqual(len(lev.eq.stages), 3)
-            config.TTS_HIGHPASS_HZ, config.TTS_PRESENCE_DB = 0.0, 0.0
-            self.assertEqual(len(mouth.Leveler().eq.stages), 0)
-        finally:
-            config.TTS_LEVEL, config.TTS_HIGHPASS_HZ, config.TTS_PRESENCE_DB = saved
+        from brain.voice_manager import manager
+        from unittest.mock import patch
+        settings=manager.get_active_profile() | dict(level=.22,highpass_hz=300,presence_db=6)
+        with patch.object(manager,'get_active_profile',return_value=settings):
+            lev=mouth.Leveler()
+            self.assertEqual(lev.level,.22)
+            self.assertEqual(len(lev.eq.stages),3)
+            settings['highpass_hz']=settings['presence_db']=0
+            self.assertEqual(len(mouth.Leveler().eq.stages),0)
+
 
 
 if __name__ == "__main__":

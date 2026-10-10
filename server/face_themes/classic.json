@@ -1,0 +1,9 @@
+{
+  "id": "classic",
+  "display_name": "Classic Cyan",
+  "description": "Classic Cyan OLED appearance.",
+  "background": "#050a0c",
+  "primary": "#b4f9ee",
+  "secondary": "#618680",
+  "line_width": 3
+}

@@ -1,0 +1,12 @@
+{
+  "id": "voice_example",
+  "display_name": "Example Fish Voice",
+  "description": "Copy this profile and supply a Fish reference ID. Empty ID uses system fallback.",
+  "provider": "fish",
+  "fish_voice_id": "",
+  "temperature": 0.4,
+  "top_p": 0.6,
+  "level": 0.12,
+  "highpass_hz": 0,
+  "presence_db": 0
+}

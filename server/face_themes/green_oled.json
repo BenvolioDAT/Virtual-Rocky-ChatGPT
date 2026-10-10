@@ -1,0 +1,9 @@
+{
+  "id": "green_oled",
+  "display_name": "Green OLED",
+  "description": "Green OLED OLED appearance.",
+  "background": "#020702",
+  "primary": "#73ff73",
+  "secondary": "#2c7f2c",
+  "line_width": 3
+}

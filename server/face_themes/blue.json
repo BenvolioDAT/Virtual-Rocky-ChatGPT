@@ -1,0 +1,9 @@
+{
+  "id": "blue",
+  "display_name": "Blue",
+  "description": "Blue OLED appearance.",
+  "background": "#02060d",
+  "primary": "#78baff",
+  "secondary": "#385f89",
+  "line_width": 3
+}

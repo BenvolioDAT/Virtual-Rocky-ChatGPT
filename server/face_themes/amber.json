@@ -1,0 +1,9 @@
+{
+  "id": "amber",
+  "display_name": "Amber Terminal",
+  "description": "Amber Terminal OLED appearance.",
+  "background": "#0c0802",
+  "primary": "#ffc65c",
+  "secondary": "#8a6830",
+  "line_width": 3
+}
