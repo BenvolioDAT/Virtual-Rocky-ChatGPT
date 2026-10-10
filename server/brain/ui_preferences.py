@@ -27,14 +27,14 @@ class PreferenceStore:
         try:
             data = json.loads(self.path.read_text(encoding='utf-8'))
             if not isinstance(data,dict): return {}
-            return {k:v for k,v in data.items() if k in ('x','y','width','height','always_on_top','preset','active_personality','active_voice','active_face_theme')}
+            return {k:v for k,v in data.items() if k in ('x','y','width','height','always_on_top','preset','active_personality','active_voice','active_face_theme','web_enabled','default_weather_location','memory_enabled')}
         except (OSError,ValueError): return {}
     def save(self, data):
         with _STORE_LOCK:
             self._save(data)
     def _save(self, data):
         data = self.load() | data
-        allowed = {k:v for k,v in data.items() if k in ('x','y','width','height','always_on_top','preset','active_personality','active_voice','active_face_theme')}
+        allowed = {k:v for k,v in data.items() if k in ('x','y','width','height','always_on_top','preset','active_personality','active_voice','active_face_theme','web_enabled','default_weather_location','memory_enabled')}
         self.path.parent.mkdir(parents=True,exist_ok=True)
         temp = self.path.with_suffix('.tmp')
         temp.write_text(json.dumps(allowed),encoding='utf-8')

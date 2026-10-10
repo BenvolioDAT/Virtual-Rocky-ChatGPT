@@ -154,7 +154,18 @@ class RobotBrain:
         was about seeing but the camera had no fresh picture; he's told so,
         otherwise he answers from memory and claims to see things.
         """
+        from . import capabilities
+        notes, early = capabilities.begin(question, chatgpt=hasattr(self,'auth'))
+        if early:
+            capabilities.finish()
+            self.emotion='neutral'
+            if on_emotion: on_emotion(self.emotion)
+            yield early
+            return
+        self._question=question
+        self._web_done=False
         source = vision_source(question, getattr(self, '_visual_source', None))
+        if capabilities.intent(question): source = None
         if source:
             self._visual_source = source
         previous_request = getattr(screen.local, 'requested', False)
@@ -174,6 +185,7 @@ class RobotBrain:
             content.append(_image_part(jpeg))
         elif camera_wanted:
             content.append({"type": "text", "text": "(Your camera has no fresh picture right now, so you cannot see anything at the moment.)"})
+        content.extend({'type':'text','text':note,'_capability_context':'memory' if note.startswith('Relevant user-approved memory') or '"textual_facts"' in note else 'web' if note.startswith('Current structured weather') else 'people'} for note in notes)
         user_msg = {"role": "user", "content": content}
         self.history.append(user_msg)
         mark = len(self.history) - 1
@@ -199,6 +211,8 @@ class RobotBrain:
             error = (f"Ow. Brain hurts. API error {e.status_code}.", "sad")
         finally:
             gen.close()
+            capabilities.trim_history(self.history)
+            capabilities.finish()
             self._strip_images()
             screen.local.requested = previous_request
             screen.local.question = ''
@@ -250,7 +264,7 @@ class RobotBrain:
             stream = self.client.chat.completions.create(
                 model=config.MODEL,
                 max_tokens=200,  # backstop; the sentence limit does the real work
-                messages=[{"role": "system", "content": personality.system_prompt(virtual=getattr(self, 'virtual_body', False))}, *self.history],
+                messages=[{"role": "system", "content": personality.system_prompt(virtual=getattr(self, 'virtual_body', False))}, *self._request_history()],
                 tools=self.available_tools() if self.actions else openai.NOT_GIVEN,
                 stream=True,
             )
@@ -346,7 +360,8 @@ class RobotBrain:
                             fresh = img
                             image_label = text
                     print(f"  [{c['name']} {args} -> {text}]")
-                    self.history.append({"role": "tool", "tool_call_id": c["id"], "content": text})
+                    self.history.append({"role": "tool", "tool_call_id": c["id"], "content": text,
+                        '_private_memory':c['name'] in ('recall_memory','list_people','label_visible_person')})
                 if fresh is not None:
                     self.history.append({
                         "role": "user",
@@ -405,10 +420,23 @@ class RobotBrain:
                     parts.append({"type": "text", "text": "(an old image was attached here; it does not represent the current desktop or camera)"})
                 m["content"] = parts
 
+    def _request_history(self):
+        import copy
+        from . import capabilities
+        history=copy.deepcopy(self.history)
+        for m in history:
+            if m.pop('_private_memory',False) and not capabilities.memory.enabled:
+                m['content']='Memory is disabled; previously retrieved contents withheld.'
+            if isinstance(m.get('content'),list):
+                m['content']=[part for part in m['content'] if not (part.get('_capability_context')=='memory' and not capabilities.memory.enabled) and not (part.get('_capability_context')=='web' and not capabilities.web.enabled)]
+                for part in m['content']: part.pop('_capability_context',None)
+        return history
+
     def available_tools(self):
         """The real desktop tools are advertised only with an active connection."""
         result = []
-        for tool in TOOLS:
+        from . import capabilities
+        for tool in [*TOOLS,*[t for t in capabilities.available(getattr(self,'_question','')) if t['function']['name'] in self.actions]]:
             name = tool['function']['name']
             action = self.actions.get(name)
             if name in ('look_at_screen', 'list_screen_monitors') and getattr(action, '__self__', None) is screen:

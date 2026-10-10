@@ -54,6 +54,9 @@ class Runtime:
         self.emit({'type':'personality','text':core.personality_status()})
         core.body = VirtualBody(self.emit)
         self.provider = self.provider or os.environ.get('VIRTUAL_LLM_AUTH', 'api' if os.environ.get('LLM_API_KEY') else 'chatgpt')
+        if self.provider != 'chatgpt':
+            from .web_access import manager as web
+            web.mark(('api',None,config.MODEL),'unsupported','Chat Completions has no hosted web-search backend here; direct weather remains available.')
         if self.provider == 'chatgpt':
             from .chatgpt_auth import AuthManager
             from .chatgpt_brain import ChatGPTBrain

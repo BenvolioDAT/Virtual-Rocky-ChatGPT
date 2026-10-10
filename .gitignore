@@ -44,3 +44,12 @@ dist/
 server/.test-tmp/
 
 server/.test-deps/
+
+# Private textual memory and local TTS assets
+server/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+server/models/tts/
+server/.kokoro-test-venv/

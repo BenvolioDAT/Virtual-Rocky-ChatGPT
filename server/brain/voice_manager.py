@@ -9,17 +9,22 @@ import copy
 from .data_profiles import DataProfileManager, header, number
 from .ui_preferences import PreferenceStore
 
-DEFAULT=dict(id='default',display_name='Default System Voice',description='Operating system voice.',provider='system',fish_voice_id='',temperature=.4,top_p=.6,level=.12,highpass_hz=0,presence_db=0)
+DEFAULT=dict(id='default',display_name='Default System Voice',description='Operating system voice.',provider='system',fish_voice_id='',temperature=.4,top_p=.6,level=.12,highpass_hz=0,presence_db=0,kokoro_voice='af_heart',speed=1.0,effect='none')
 
 def validate(data):
     header(data,set(DEFAULT))
     data=copy.deepcopy(data)
-    if data.get('provider') not in ('system','fish'): raise ValueError('provider must be system or fish')
+    if data.get('provider') not in ('system','fish','kokoro_local'): raise ValueError('provider must be system, fish or kokoro_local')
     if data['id'] == DEFAULT['id'] and data['provider'] != 'system':
         raise ValueError('the default fallback profile must use the system provider')
     voice=data.setdefault('fish_voice_id','')
     if not isinstance(voice,str) or len(voice)>256 or any(ord(c)<32 for c in voice): raise ValueError('invalid fish_voice_id')
     for key,default,low,high in [('temperature',.4,0,1),('top_p',.6,0,1),('level',.12,.01,.4),('highpass_hz',0,0,600),('presence_db',0,-12,12)]: number(data,key,default,low,high)
+    data.setdefault('kokoro_voice','af_heart'); data.setdefault('effect','none')
+    import re
+    if not isinstance(data['kokoro_voice'],str) or not re.fullmatch(r'a[fm]_[a-z0-9]{1,40}',data['kokoro_voice']): raise ValueError('Use a generic American English Kokoro voice identifier.')
+    number(data,'speed',1,.7,1.3)
+    if data['effect'] not in ('none','clinical_ai'): raise ValueError('effect must be none or clinical_ai')
     return data
 
 class VoiceManager(DataProfileManager):

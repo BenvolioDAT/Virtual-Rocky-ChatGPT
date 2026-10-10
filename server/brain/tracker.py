@@ -22,6 +22,7 @@ import cv2
 import numpy as np
 
 from . import config
+from .session_people import manager as session_people
 from .eyes import Eyes
 
 MODEL = Path(__file__).resolve().parent.parent / "models" / "face_detection_yunet_2023mar.onnx"
@@ -41,6 +42,8 @@ class Tracker:
         self.enabled = config.TRACKING
         self._stop = threading.Event()
         self._thread = None
+        self.session_people = session_people
+        self.session_people.reset()
         self._det = None
         self._size = (0, 0)
         self._last_sent = 0.0
@@ -52,6 +55,7 @@ class Tracker:
 
     def stop(self):
         self._stop.set()
+        self.session_people.reset()
         if self._thread:
             self._thread.join(timeout=2)
 
@@ -86,6 +90,7 @@ class Tracker:
                 continue
             h, w = img.shape[:2]
             face = None
+            faces = None
             if self.enabled:
                 try:
                     _, faces = self._detector(w, h).detect(img)
@@ -96,6 +101,7 @@ class Tracker:
                 if faces is not None and len(faces):
                     best = max(faces, key=lambda f: f[2] * f[3])
                     face = tuple(int(v) for v in best[:4])
+            self.session_people.update([tuple(f[:4]) for f in faces] if faces is not None and self.enabled else [])
             self.face = face
             now = time.time()
 

@@ -217,6 +217,21 @@ async def handle_console_line(line: str) -> bool:
     cmd = cmd.lower()
     arg = arg.strip()
 
+    if cmd in ('web','memory','people'):
+        from .feature_controls import handle
+        if cmd=='web' and arg=='probe':
+            if not capabilities.web.enabled:
+                result={'type':'feature_info','title':'Web Access','text':'Web Access is disabled; no probe was made.'}
+            elif hasattr(brain,'probe_web'):
+                status=await asyncio.to_thread(brain.probe_web)
+                result={'type':'feature_info','title':'Web Access Probe','text':status}
+            else:
+                result={'type':'feature_info','title':'Web Access','text':'Hosted web search is unsupported by this Chat Completions provider. Weather remains available.'}
+        else: result=handle(line)
+        if result:
+            print(result.get('text') or 'Web sources updated.')
+            await send_to_robot(result)
+        return True
     if cmd == 'companion':
         text = companion_status()
         print(text)
@@ -397,11 +412,14 @@ def _sync(coro_fn):
 from .screen import screen, vision_source
 
 main_loop: asyncio.AbstractEventLoop | None = None
+from . import capabilities
+
 ABILITIES = {
     "look_at_screen": screen.look,
     "list_screen_monitors": screen.monitors,
     "look": _sync(look),
     "track_face": _sync(lambda args: set_tracking(bool(args.get("on", True)))),
+    **capabilities.actions(),
 }
 
 

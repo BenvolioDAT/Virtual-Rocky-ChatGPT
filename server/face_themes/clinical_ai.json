@@ -1,0 +1,9 @@
+{
+  "id": "clinical_ai",
+  "display_name": "Clinical AI",
+  "description": "Original pale clinical display with amber status accents.",
+  "background": "#03070b",
+  "primary": "#dbeeff",
+  "secondary": "#efaa53",
+  "line_width": 2
+}

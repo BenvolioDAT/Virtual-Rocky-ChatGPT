@@ -3,6 +3,8 @@ import math
 import random
 import time
 import os
+import json
+import html
 from PySide6.QtCore import Qt, QTimer, Signal, QObject, QPointF, QRectF
 from .ui_preferences import PRESETS, visible_position
 from . import config
@@ -10,7 +12,7 @@ from .personality_manager import manager
 from .voice_manager import manager as voices
 from .face_theme_manager import manager as themes
 from PySide6.QtGui import QColor, QPainter, QPen, QPainterPath, QFont, QFontDatabase
-from PySide6.QtWidgets import QWidget, QMenu, QInputDialog, QPushButton, QMessageBox
+from PySide6.QtWidgets import QWidget, QMenu, QInputDialog, QPushButton, QMessageBox, QDialog, QVBoxLayout, QTextBrowser
 
 class Bridge(QObject):
     event = Signal(dict)
@@ -80,6 +82,8 @@ class FaceWindow(QWidget):
         elif kind == 'presentation':
             self.setToolTip(e['text'])
             self.apply_theme()
+        elif kind == 'feature_info': QMessageBox.information(self,e['title'],e['text'])
+        elif kind == 'source_info': self.show_sources(e)
         elif kind == 'companion_info': QMessageBox.information(self, 'Companion Setup', e['text'])
         elif kind == 'emotion':
             self.emotion = e.get('name') if e.get('name') in config.EMOTIONS else 'neutral'
@@ -240,6 +244,7 @@ class FaceWindow(QWidget):
         self.add_personality_menu(menu)
         self.add_presentation_menus(menu)
         menu.addAction('Companion Setup…', lambda: self.control('companion status'))
+        self.add_feature_menus(menu)
         self.add_screen_menu(menu)
         top = menu.addAction('Always on top'); top.setCheckable(True)
         top.setChecked(bool(self.windowFlags() & Qt.WindowType.WindowStaysOnTopHint))
@@ -297,6 +302,83 @@ class FaceWindow(QWidget):
             submenu.addAction(folder_label,lambda checked=False,c=command: self.control(c+' folder'))
             result.append(submenu)
         return result
+
+    def add_feature_menus(self,menu):
+        from .web_access import manager as web
+        from .memory_manager import manager as memory
+        web_menu=menu.addMenu(web.status().split('\n')[0])
+        enable=web_menu.addAction('Enable Web Access',lambda:self.control('web enable')); enable.setEnabled(not web.enabled)
+        disable=web_menu.addAction('Disable Web Access',lambda:self.control('web disable')); disable.setEnabled(web.enabled)
+        web_menu.addAction('Status',lambda:self.control('web status'))
+        web_menu.addAction('Probe Hosted Search',lambda:self.control('web probe'))
+        web_menu.addAction('Last Sources…',lambda:self.control('web sources'))
+        web_menu.addAction('Weather Location…',self.weather_location_dialog)
+        memory_menu=menu.addMenu('Memory: '+('Enabled' if memory.enabled else 'Disabled'))
+        memory_menu.addAction('Enable Memory',lambda:self.control('memory enable')).setEnabled(not memory.enabled)
+        memory_menu.addAction('Disable Memory',lambda:self.control('memory disable')).setEnabled(memory.enabled)
+        memory_menu.addAction('Known People…',lambda:self.control('memory people'))
+        memory_menu.addAction('Search Memory…',lambda:self.text_command('Search Memory','Search:','memory search '))
+        memory_menu.addAction('Add Memory…',self.add_memory_dialog)
+        memory_menu.addAction('Add Person / Aliases…',self.add_person_dialog)
+        memory_menu.addAction('Forget Memory…',self.forget_memory_dialog)
+        memory_menu.addAction('Memory Status…',lambda:self.control('memory status'))
+        memory_menu.addAction('Delete All Memory…',self.delete_memory_dialog)
+        camera_menu=menu.addMenu('Camera Session People')
+        camera_menu.addAction('Visible Tracks…',lambda:self.control('people visible'))
+        camera_menu.addAction('Label Person…',self.label_person_dialog)
+        camera_menu.addAction('Clear Session Labels',lambda:self.control('people clear'))
+        return web_menu,memory_menu,camera_menu
+
+    def text_command(self,title,prompt,prefix):
+        value,ok=QInputDialog.getText(self,title,prompt)
+        if ok and value.strip(): self.control(prefix+value.strip())
+
+    def weather_location_dialog(self):
+        from .web_access import manager as web
+        value,ok=QInputDialog.getText(self,'Weather Location','City and region (blank clears):',text=web.preferences.load().get('default_weather_location',''))
+        if ok: self.control('web location '+value.strip())
+
+    def add_memory_dialog(self):
+        subject,ok=QInputDialog.getText(self,'Add Memory','Subject (user, project, or a person):',text='user')
+        if not ok or not subject.strip(): return
+        fact,ok=QInputDialog.getText(self,'Add Memory','Fact to save locally:')
+        if ok and fact.strip(): self.control('memory add '+json.dumps({'subject':subject.strip(),'fact':fact.strip()}))
+
+    def add_person_dialog(self):
+        name,ok=QInputDialog.getText(self,'Add Person','Name:')
+        if not ok or not name.strip(): return
+        aliases,ok=QInputDialog.getText(self,'Person Aliases','Nicknames, separated by commas (optional):')
+        if ok: self.control('memory person '+json.dumps({'name':name.strip(),'aliases':[a.strip() for a in aliases.split(',') if a.strip()]}))
+
+    def forget_memory_dialog(self):
+        id,ok=QInputDialog.getInt(self,'Forget Memory','Fact ID (from Search Memory):',1,1,2147483647)
+        if ok: self.control('memory forget '+str(id))
+
+    def delete_memory_dialog(self):
+        answer=QMessageBox.question(self,'Delete All Memory','Permanently delete all saved textual facts, people and aliases? This cannot be undone.',QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No)
+        if answer==QMessageBox.StandardButton.Yes: self.control('memory deleteall confirmed')
+
+    def label_person_dialog(self):
+        name,ok=QInputDialog.getText(self,'Label Visible Person','Name supplied by you (no automatic recognition):')
+        if not ok or not name.strip(): return
+        position,ok=QInputDialog.getItem(self,'Which Person?','Current visible person:', ['One visible face','left','center','right'],0,False)
+        if ok:
+            args={'name':name.strip()}
+            if position!='One visible face': args['position']=position
+            self.control('people label '+json.dumps(args))
+
+    def show_sources(self,event):
+        dialog=QDialog(self); dialog.setWindowTitle('Sources for Last Answer'); dialog.resize(620,420)
+        browser=QTextBrowser(dialog); browser.setOpenExternalLinks(True)
+        lines=['<p>'+html.escape(event.get('answer','')).replace('\n','<br>')+'</p>']
+        for source in event.get('sources',[]):
+            # URLs were restricted to http(s) by WebAccess; escape all text/HTML.
+            url=html.escape(source['url'],quote=True)
+            lines.append('<p><a href="'+url+'">'+html.escape(source['title'])+'</a><br>'+html.escape(source['domain'])+'<br>'+url+'</p>')
+        browser.setHtml(''.join(lines) if event.get('sources') else '<p>No sources for the last relevant answer.</p>')
+        layout=QVBoxLayout(dialog); layout.addWidget(browser)
+        close=QPushButton('Close',dialog); close.clicked.connect(dialog.accept); layout.addWidget(close)
+        dialog.exec()
 
     def add_screen_menu(self, menu):
         screen_menu = menu.addMenu('Screen Vision: ' + self.screen_status)

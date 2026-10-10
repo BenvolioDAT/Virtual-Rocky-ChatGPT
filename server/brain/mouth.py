@@ -55,6 +55,8 @@ _EMOJI = re.compile("[\U0001F300-\U0001FAFF\u2600-\u27BF\uFE0F]")
 def clean_for_tts(text: str) -> str:
     """What the voice model gets: plain spoken words. Markdown marks, emoji
     and runs of punctuation tend to make generated speech do odd things."""
+    from .web_access import spoken_text
+    text = spoken_text(text)
     text = _EMOJI.sub("", _MARKUP.sub("", text))
     text = re.sub(r"([!?.,])\1+", r"\1", text)      # "!!!" -> "!"
     text = re.sub(r"\.{2,}", ".", text)              # "..." -> "."
@@ -166,6 +168,21 @@ class Equalizer:
         return x
 
 
+class VoiceEffect:
+    """Optional subtle delay/modulation; deterministic state across PCM chunks."""
+    def __init__(self,preset='none'):
+        self.enabled=preset=='clinical_ai'
+        self.tail=np.zeros(192,dtype=np.float32)
+        self.offset=0
+    def process(self,x):
+        if not self.enabled: return x
+        delayed=np.concatenate([self.tail,x])
+        self.tail=delayed[-192:].copy()
+        phase=(np.arange(len(x))+self.offset)*2*np.pi*32/SAMPLE_RATE
+        self.offset+=len(x)
+        return .94*x+.06*delayed[:len(x)]*(.8+.2*np.sin(phase))
+
+
 class Leveler:
     """Streaming automatic gain: holds the voice near a steady loudness.
 
@@ -192,6 +209,7 @@ class Leveler:
         self.settings = voice_manager.get_active_profile()
         self.level = self.settings["level"]
         self.eq = Equalizer(self.settings["highpass_hz"], self.settings["presence_db"])
+        self.effect = VoiceEffect(self.settings.get("effect","none"))
         self.env = 0.0      # loudness estimate; 0 = nothing heard yet
         self.gain = 1.0
 
@@ -199,7 +217,7 @@ class Leveler:
         x = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
         if not len(x):
             return pcm
-        x = self.eq.process(x).astype(np.float32)
+        x = self.effect.process(self.eq.process(x)).astype(np.float32)
         rms = float(np.sqrt(np.mean(x * x)))
         if rms > self.GATE:
             if self.env == 0.0:
@@ -333,6 +351,14 @@ def stream(text: str, leveler: Leveler | None = None) -> Iterator[bytes]:
                 "Voice %r is missing %s; using system TTS for this utterance. "
                 "The selected voice remains unchanged.",
                 leveler.settings["id"], " and ".join(missing))
+        if leveler.settings["provider"] == "kokoro_local":
+            try:
+                from .kokoro_local import synthesize as local_synthesize
+                first=local_synthesize(text,leveler.settings)
+                chunks=iter(())
+            except Exception:
+                logging.getLogger(__name__).warning('Local Kokoro voice unavailable; run setup-local-voice.cmd. Using system TTS for this utterance; selection unchanged.')
+                chunks=None
         if chunks is None:
             try:
                 first = _synthesize_builtin(text)

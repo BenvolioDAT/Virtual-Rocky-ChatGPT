@@ -1,0 +1,3 @@
+# Optional local voice; CPU PyTorch is installed first by setup-local-voice.cmd.
+kokoro==0.9.4
+misaki[en]>=0.9.4,<1

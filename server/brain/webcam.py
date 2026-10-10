@@ -33,6 +33,8 @@ class Webcam:
         except Exception as exc:
             self.error = f'Webcam unavailable: {exc}'
         finally:
+            from .session_people import manager
+            manager.reset()
             if capture is not None: capture.release()
             if self.error: print(self.error)
     def stop(self):

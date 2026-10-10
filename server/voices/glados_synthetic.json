@@ -1,0 +1,14 @@
+{
+  "id": "glados_synthetic",
+  "display_name": "Clinical Synthetic AI",
+  "description": "Original clinical computer styling using generic Kokoro af_heart. Not a performer clone.",
+  "provider": "kokoro_local",
+  "kokoro_voice": "af_heart",
+  "speed": 0.95,
+  "effect": "clinical_ai",
+  "temperature": 0.4,
+  "top_p": 0.6,
+  "level": 0.12,
+  "highpass_hz": 110,
+  "presence_db": 2
+}
