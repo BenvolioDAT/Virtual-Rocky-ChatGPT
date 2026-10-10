@@ -42,9 +42,7 @@ def synthesize(text,settings,pipeline=None):
             if hasattr(samples,'detach'): samples=samples.detach().cpu().numpy()
             samples=np.asarray(samples,dtype=np.float32).reshape(-1)
             if not np.all(np.isfinite(samples)): raise RuntimeError('Invalid local TTS audio.')
-            # Kokoro's 24 kHz mono output -> existing 16 kHz mono s16le body pipeline.
-            count=int(len(samples)*16000/24000)
-            if count:
-                audio.append(np.interp(np.arange(count)*1.5,np.arange(len(samples)),samples))
+            if len(samples): audio.append(samples)
         if not audio: raise RuntimeError('Local TTS produced no audio.')
-        return (np.clip(np.concatenate(audio),-1,1)*32767).astype('<i2').tobytes()
+        from .mouth import samples_to_pcm16k
+        return samples_to_pcm16k(np.concatenate(audio),24000)

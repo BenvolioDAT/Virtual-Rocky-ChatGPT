@@ -18,13 +18,16 @@ class CompanionTests(unittest.TestCase):
         self.store=PreferenceStore(self.root/'ui.json')
         for name in ('personalities','voices','themes'): (self.root/name).mkdir()
         self.write('personalities',ROCKY)
-        self.write('personalities',ROCKY|dict(id='gamer',display_name='Gamer Buddy',robot_name='Pixel',wake_phrases=['hey pixel']))
+        gamer=ROCKY|dict(id='gamer',display_name='Gamer Buddy',robot_name='Pixel',wake_phrases=['hey pixel'])
+        gamer.pop('default_voice_id',None)
+        self.write('personalities',gamer)
         self.write('voices',DEFAULT)
         self.write('voices',DEFAULT|dict(id='rocky_voice',display_name='Rocky Voice',provider='fish',fish_voice_id='reference',temperature=.2,top_p=.8))
         self.write('themes',CLASSIC)
         self.write('themes',CLASSIC|dict(id='purple',display_name='Purple',primary='#cf8cff'))
         self.people=PersonalityManager(self.root/'personalities',self.store)
         self.voices=VoiceManager(self.root/'voices',self.store)
+        self.people._voices=self.voices
         self.themes=FaceThemeManager(self.root/'themes',self.store)
     def write(self,folder,data): (self.root/folder/(data['id']+'.json')).write_text(json.dumps(data),encoding='utf-8')
     def patches(self):
@@ -42,7 +45,7 @@ class CompanionTests(unittest.TestCase):
         self.assertEqual(VoiceManager(self.voices.folder,self.store).active_id,'default')
         self.assertEqual(FaceThemeManager(self.themes.folder,self.store).active_id,'purple')
         self.people.set_active_profile('rocky')
-        self.assertEqual(self.voices.active_id,'default'); self.assertEqual(self.themes.active_id,'purple')
+        self.assertEqual(self.voices.active_id,'rocky_voice'); self.assertEqual(self.themes.active_id,'purple')
     def test_other_identity_migration_and_invalid_saved_values(self):
         self.store.save(dict(active_personality='gamer',active_voice=None,active_face_theme=[]))
         self.assertEqual(VoiceManager(self.voices.folder,self.store).active_id,'default')

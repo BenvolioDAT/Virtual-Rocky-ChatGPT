@@ -1,5 +1,6 @@
 """Recovery copy of the bundled default profile."""
 ROCKY = {'id': 'rocky',
+ 'default_voice_id': 'rocky_voice',
  'display_name': 'Rocky',
  'robot_name': 'Rocky',
  'description': 'Eridian engineer from Project Hail Mary',

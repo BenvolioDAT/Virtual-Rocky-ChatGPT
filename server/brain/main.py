@@ -204,6 +204,9 @@ def companion_status():
 def personality_status():
     from .personality_manager import manager
     text = 'Personality changed to ' + manager.get_active_profile()['display_name'] + '.'
+    from .voice_manager import manager as voices
+    voice=voices.get_active_profile()
+    text += f"\nVoice: {voice['display_name']}\nVoice provider: {voice['provider']}"
     if manager.errors: text += ' ' + ' '.join(manager.errors)
     return text
 

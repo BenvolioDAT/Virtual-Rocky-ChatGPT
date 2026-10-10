@@ -1,5 +1,6 @@
 {
   "id": "glados",
+  "default_voice_id": "glados_local",
   "display_name": "GLaDOS",
   "robot_name": "GLaDOS",
   "description": "A dry, clinical testing AI inspired by fiction; original dialogue.",

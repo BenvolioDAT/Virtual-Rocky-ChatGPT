@@ -554,7 +554,7 @@ initial default. Original starters are Friendly Companion (Nova), Engineer
 (Gizmo), Gamer Buddy (Pixel), and Custom Example (Echo). The selected item is checked.
 Switching needs no restart: the current spoken turn finishes, old conversation
 and temporary visual-source context clear, the face sleeps, and name, wake words,
-canned lines and window title update. Voice and face theme remain selected independently. Say the new character's wake phrase.
+canned lines and window title update. A configured `default_voice_id` selects that voice on an explicit personality change; the face theme stays selected. Say the new character's wake phrase.
 Interrupted network streams may briefly delay switching while they finish closing.
 Screen Watch's local buffer stays available. All characters share the existing
 emotions, tool availability, Screen Vision privacy controls and visual honesty rules.
@@ -635,7 +635,7 @@ Choose three independent layers from the face's right-click menu:
 | Voice | How it sounds: TTS provider, reference ID, synthesis settings, volume target and EQ | `server/voices/` |
 | Face Theme | How it looks: OLED colors and line width | `server/face_themes/` |
 
-For example, choose **Engineer + Rocky Voice + Green OLED**, or **Gamer Buddy (Pixel) + Default System Voice + Purple**. Changing any layer keeps the other two selections. Only personality changes clear conversation history and reset wake state; voices and themes cannot alter prompts, capabilities, or tool safety. All emotions and animations use the same renderer.
+For example, choose **Engineer + Rocky Voice + Green OLED**, or **Gamer Buddy (Pixel) + Default System Voice + Purple**. Personalities may declare an optional `default_voice_id`: switching to GLaDOS selects `glados_local`, and switching back to Rocky selects `rocky_voice`. Characters without that field keep the current voice. Manual voice choices remain selected until the personality changes again; reselecting the same personality, reload, restart and ordinary turns do not overwrite them. Themes stay independent. Only personality changes clear conversation history and reset wake state; voices and themes cannot alter prompts, capabilities, or tool safety. All emotions and animations use the same renderer.
 
 Selections restore independently after restart using `active_personality`, `active_voice`, and `active_face_theme` in the existing window preferences. A removed/invalid selected voice falls back to Default System Voice; a missing theme falls back to Classic Cyan; a missing personality falls back to Rocky. Each fallback leaves the other selections alone. First-time migration selects Rocky Voice for saved Rocky identity (including the original default install), and System Voice for other identities. Old personality `voice` fields are accepted with a logged deprecation warning and ignored. Bundled Rocky's existing reference ID now lives in `server/voices/rocky.json`.
 
@@ -643,7 +643,7 @@ Use **Companion Setup…** to see all selections. **Voice → Test Voice** speak
 
 To customize, use **Open Personality Folder**, **Open Voice Folder**, or **Open Face Theme Folder**. Copy an existing JSON file, give it a unique lowercase `id` and a `display_name`, edit its data, then use the matching **Reload** action. Reload discovers new files and updates active settings. Invalid JSON, duplicate IDs, unknown fields, and out-of-range settings produce warnings in the console; reload status includes presentation-profile warnings. Profiles contain data only, never executable code. Packaged builds keep these folders alongside the executable.
 
-Voice profiles support `provider: "system"`, `"fish"`, or optional `"kokoro_local"` (see local voice setup below), `fish_voice_id` (empty is allowed for the example template), `temperature` and `top_p` (0–1), `level` (0.01–0.4), `highpass_hz` (0–600), and `presence_db` (-12–12). **Do not put API keys into profiles.** Keep `FISH_AUDIO_API_KEY` in the existing secret configuration (`server/.env` for source installs). The example Fish profile has no invented reference ID. Console speaker-tuning controls apply to the active voice until reload/restart; edit its JSON to retain those values.
+Voice profiles support `provider: "system"`, `"fish"`, or optional `"kokoro_local"` / `"glados_local"` (see local voice setup below), `fish_voice_id` (empty is allowed for the example template), `temperature` and `top_p` (0–1), `level` (0.01–0.4), `highpass_hz` (0–600), and `presence_db` (-12–12). **Do not put API keys into profiles.** Keep `FISH_AUDIO_API_KEY` in the existing secret configuration (`server/.env` for source installs). The example Fish profile has no invented reference ID. Console speaker-tuning controls apply to the active voice until reload/restart; edit its JSON to retain those values.
 
 The existing starter filenames and IDs stay stable: `default.json` (`default`, system speech), `rocky.json` (`rocky_voice`, the existing Fish reference), and `voice_example.json` (`voice_example`, an empty Fish template). To add a Fish voice, copy `voice_example.json`, change its ID and label, supply a reference ID you can use, reload voices, and select it. The `default` ID is reserved for a system-provider fallback; a file that tries to redefine it as Fish is rejected. Even if its file is removed or invalid, a built-in system profile remains available. On Windows this option uses the installed Windows speech engine.
 
@@ -668,7 +668,7 @@ theme folder
 companion status
 ```
 
-Architecturally, `PersonalityManager` remains the character authority. `VoiceManager` and `FaceThemeManager` share a small validated-data loader, use separate preference keys, and have no dependency on each other or the personality manager. Runtime and UI coordinate selections. Additional TTS providers can be added through provider validation and dispatch without embedding voice decisions in character profiles.
+Architecturally, `PersonalityManager` remains the character authority and applies optional voice defaults centrally in `set_active_profile`, only when the identity changes explicitly. It validates the voice identifier and warns while preserving the current voice if the referenced profile is missing. `VoiceManager` and `FaceThemeManager` share a small validated-data loader and use separate preference keys. Providers remain isolated from character prompts; the personality only names a voice profile.
 
 The old voice-selection configuration attributes (`TTS_VOICE_ID`, `TTS_TEMPERATURE`, `TTS_TOP_P`, `TTS_LEVEL`, `TTS_HIGHPASS_HZ`, `TTS_PRESENCE_DB`) have been removed. Python consumers should use `brain.voice_manager.manager.get_active_profile()` or its getters. The live-view HTTP console retains its three legacy slider field names for compatibility, but both their values and updates go directly to VoiceManager. These names hold no separate settings. Global engine controls remain in `config.py`: `TTS_MAX_GAIN` caps gain for every profile, and `TTS_FALLBACK_VOICE` names the macOS built-in voice (Windows/Linux use their OS default). Selecting individual local OS voices through JSON is not implemented yet. Master playback volume belongs to the body/output controls; profile `level` controls synthesis loudness before playback. Personality profiles own none of these values.
 
@@ -686,13 +686,13 @@ Changing-information questions such as latest news, EVE Online patches, current 
 
 ## GLaDOS-Style Companion
 
-Select the layers independently:
+Select the personality and optional presentation choices:
 
 - **Personality → GLaDOS** (`server/personalities/glados.json`): clinical, dry scientific sarcasm with original examples. Wake with “hey glados” or “hi glados”. No speculative recognition aliases or copied game quotations are included.
 - **Voice → Clinical Synthetic AI** (`server/voices/glados_synthetic.json`): generic local Kokoro `af_heart`, slower delivery, modest EQ and an original subtle `clinical_ai` delay/modulation effect. This does not reproduce a particular actor's vocal identity or use Portal-trained clone weights.
 - **Face Theme → Clinical AI** (`server/face_themes/clinical_ai.json`): original pale blue face, dark background and amber accents, using the shared renderer. No logos or copied art.
 
-Changing personality does not select the voice or theme. No combined preset system was added. Shared core honesty, privacy, memory, camera and tool rules take precedence over character style.
+Switching to GLaDOS now selects **GLaDOS Local** automatically. **Clinical Synthetic AI** remains a manual Kokoro alternative and fallback; choose it after switching if preferred. The face theme stays independent. Shared core honesty, privacy, memory, camera and tool rules take precedence over character style.
 
 To install local speech in a working source environment, run **setup-local-voice.cmd** from the project root. It installs CPU PyTorch from the official PyTorch wheel index, the optional `server/requirements-kokoro.txt` dependencies, and spaCy's English package, then runs `server/scripts/setup_kokoro_voice.py`. These optional dependencies are separate from the normal system/Fish voice install. If the copied `.venv` points to a missing Python installation, rebuild it using the normal setup steps first. Packaged distributions need the optional runtime included at build time and the local model folder beside the executable; the source setup command is intended for source installs.
 
@@ -705,6 +705,25 @@ Model provenance: [official hexgrad/Kokoro-82M repository](https://huggingface.c
 | `config.json` | 2,351 | Git blob SHA-1 `14a726edd3718279eac426630879ff743955b16a` |
 
 No large assets are committed. The TTS runtime never downloads missing assets or language packages. Missing/broken local dependencies or voice packs produce a warning and use the system voice for that utterance, preserving the selected profile. Kokoro's 24 kHz output is converted into the existing 16 kHz mono PCM pipeline for both bodies. Profile additions: `provider: "kokoro_local"`, `kokoro_voice` (generic American-English pack ID), `speed` (0.7–1.3), and `effect` (`none` or `clinical_ai`). Existing system/Fish profiles keep their behavior.
+
+## GLaDOS Local Voice
+
+This optional GLaDOS-style TTS model runs entirely on your CPU after installation, with no paid TTS service or runtime internet requirement. The existing GLaDOS character prompt is preserved. To install and try it:
+
+1. Ensure the normal project Python environment (`server/.venv`) works; rebuild a copied environment if its original Python installation is missing.
+2. Run **setup-glados-voice.cmd** from the project root. It installs the optional pinned `sherpa-onnx==1.13.8` runtime (and its matching core package), then explicitly downloads the official approximately 67 MB compressed package. The ONNX model itself is approximately 61 MB.
+3. Right-click the face → **Personality → GLaDOS**. The voice becomes **GLaDOS Local**, provider `glados_local`. Select **Voice → Test Voice**, or type `voice test`. Wake with “hey glados”. Typed questions, normal replies, canned lines and `say` commands share this same speech pipeline.
+4. Select **Personality → Rocky** to restore Rocky Voice. A later manual voice choice is respected until the next personality change.
+
+Assets live in ignored `server/models/glados/`: `en_US-glados.onnx`, `tokens.txt` and `espeak-ng-data/`. `server/scripts/setup_glados_voice.py` uses HTTPS with timeouts and a 100 MiB download limit. It extracts into a temporary directory, rejects traversal, absolute paths, Windows alternate streams/reserved names, duplicate paths, links and special files, allowlists expected contents, caps expansion at 256 MiB / 4,000 entries, and validates essential files before installing. An existing valid install skips downloading. An incomplete installation is left intact with instructions to rename its folder and retry. Setup retains upstream attribution files and writes provenance.
+
+The official release asset metadata supplied **no authoritative archive SHA-256** at verification time. Setup records the observed digest for provenance, but does not claim this authenticates the download against an upstream checksum. HTTPS, expected-content validation and extraction restrictions remain enforced; there is no invented checksum.
+
+`brain/glados_local.py` lazily initializes one CPU synthesizer on first speech and serializes access under a lock. Subsequent sentences reuse it. Failed initialization or synthesis warns and tries the existing `glados_synthetic` Kokoro voice, then operating-system TTS. The saved selected voice stays unchanged, and a later utterance can retry after repair. Runtime never downloads or installs anything. The default profile uses natural `speed: 1.0`, `effect: "none"`, and no EQ boost or pitch shifting. Edit `speed` between 0.7 and 1.3 (larger means faster; Sherpa handles inverse VITS length scale), then reload voices.
+
+Sherpa produces 22,050 Hz mono samples, converted through the shared local/WAV conversion into **16,000 Hz mono signed 16-bit little-endian PCM** before existing Equalizer, VoiceEffect, Leveler, debug recording and body transport. Neither Kokoro nor Fish/system speech is removed. Packaged builds need the optional Sherpa runtime and `models/glados/` beside the executable; this setup script targets source installs.
+
+Model source: [sherpa-onnx GLaDOS model documentation](https://k2-fsa.github.io/sherpa/onnx/tts/pretrained_models/vits.html#vits-piper-en-us-glados-english-1-speaker) and [official release package](https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-glados.tar.bz2), converted from [dnhkng/GLaDOS](https://github.com/dnhkng/GLaDOS), using Piper/VITS. Credits: dnhkng/GLaDOS, [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), and Piper/VITS. Sherpa source is Apache-2.0; dnhkng/GLaDOS source is MIT. These source-code licenses do not automatically settle trained-model rights. The model remains external, downloaded directly during optional setup; no Portal audio or Valve assets are packaged. This project is not affiliated with Valve and does not claim this voice is Ellen McLain.
 
 ## Long-Term Memory
 

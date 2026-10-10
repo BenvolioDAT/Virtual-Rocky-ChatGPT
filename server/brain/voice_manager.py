@@ -1,7 +1,7 @@
 """Authoritative TTS provider, reference, synthesis and speaker-tuning profiles.
 
 The saved personality ID is consulted only for one-time migration when no voice
-selection exists. Subsequent personality changes never affect this manager.
+selection exists. Explicit personality changes may select a configured default.
 Consumers should snapshot get_active_profile() once per reply so selection and
 reload cannot change settings halfway through audio generation.
 """
@@ -14,7 +14,7 @@ DEFAULT=dict(id='default',display_name='Default System Voice',description='Opera
 def validate(data):
     header(data,set(DEFAULT))
     data=copy.deepcopy(data)
-    if data.get('provider') not in ('system','fish','kokoro_local'): raise ValueError('provider must be system, fish or kokoro_local')
+    if data.get('provider') not in ('system','fish','kokoro_local','glados_local'): raise ValueError('provider must be system, fish, kokoro_local or glados_local')
     if data['id'] == DEFAULT['id'] and data['provider'] != 'system':
         raise ValueError('the default fallback profile must use the system provider')
     voice=data.setdefault('fish_voice_id','')

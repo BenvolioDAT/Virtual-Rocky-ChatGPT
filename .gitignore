@@ -52,4 +52,5 @@ server/data/
 *.db-wal
 *.db-shm
 server/models/tts/
+server/models/glados/
 server/.kokoro-test-venv/

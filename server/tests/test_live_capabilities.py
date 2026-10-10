@@ -245,16 +245,17 @@ class CapabilityTests(unittest.TestCase):
         self.memory.begin_turn('This is John, on the left.')
         with self.patches(): result,_=label_visible_person({'name':'John','position':'left'})
         self.assertIn('session_only',result); self.assertEqual(self.people.visible()[0]['name'],'John')
-    def test_new_glados_profiles_independent_and_core_rules_preserved(self):
+    def test_glados_default_voice_and_core_rules_preserved(self):
         from brain.personality_manager import PersonalityManager
         from brain.voice_manager import VoiceManager
         from brain.face_theme_manager import FaceThemeManager
         server=Path(__file__).resolve().parent.parent
         personalities=PersonalityManager(server/'personalities',self.store); voices=VoiceManager(server/'voices',self.store); themes=FaceThemeManager(server/'face_themes',self.store)
-        old=(voices.active_id,themes.active_id); personalities.set_active_profile('glados')
+        personalities._voices=voices
+        old_theme=themes.active_id; personalities.set_active_profile('glados')
         from brain import ears
         with patch('brain.personality_manager.manager',personalities): self.assertTrue(ears.strip_wake_word('Hey GLaDOS!')[0])
-        self.assertEqual(personalities.get_robot_name(),'GLaDOS'); self.assertIn('hey glados',personalities.get_wake_phrases()); self.assertEqual((voices.active_id,themes.active_id),old)
+        self.assertEqual(personalities.get_robot_name(),'GLaDOS'); self.assertIn('hey glados',personalities.get_wake_phrases()); self.assertEqual(voices.active_id,'glados_local'); self.assertEqual(themes.active_id,old_theme)
         self.assertIn('Never automatically identify',personalities.get_system_prompt()); self.assertIn('completed web search',personalities.get_system_prompt())
         voices.set_active_profile('glados_synthetic'); themes.set_active_theme('clinical_ai'); self.assertEqual(voices.get_provider(),'kokoro_local')
     def test_kokoro_profile_validation_and_synthetic_local_pcm(self):

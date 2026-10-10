@@ -1,6 +1,6 @@
 """Mouth: turn the robot's words into sound.
 
-Two voices:
+Profile-selected voices:
   * Fish Audio (selected voice profile) when
     FISH_AUDIO_API_KEY is set. Plain HTTPS POST asking for raw 16 kHz PCM. The response body
     streams, so the first audio arrives ~0.3 s in, long before the sentence
@@ -8,6 +8,7 @@ Two voices:
   * the computer's built-in voice as an explicit system profile or fallback so the loop is audible
     before that's set up: `say` on macOS, Windows' speech engine through
     PowerShell, espeak-ng on Linux.
+  * optional offline Kokoro and GLaDOS-style Piper/VITS, lazily loaded on CPU.
 
 `stream(text)` yields 16 kHz mono s16le PCM chunks — the exact format the
 robot's speaker expects (docs/protocol.md) — as they're produced.
@@ -247,6 +248,20 @@ class Leveler:
         return (y * 32767).astype(np.int16).tobytes()
 
 
+def samples_to_pcm16k(samples, rate: int) -> bytes:
+    """Shared local TTS conversion: mono float samples to speaker-format s16le."""
+    samples=np.asarray(samples,dtype=np.float32)
+    if samples.ndim != 1 or not len(samples) or not np.all(np.isfinite(samples)):
+        raise ValueError('TTS must produce nonempty finite mono samples')
+    if not isinstance(rate,(int,np.integer)) or rate <= 0:
+        raise ValueError('Invalid TTS sample rate')
+    if rate != SAMPLE_RATE:
+        count=int(len(samples)*SAMPLE_RATE/rate)
+        if not count: raise ValueError('TTS audio is too short')
+        samples=np.interp(np.arange(count)*rate/SAMPLE_RATE,np.arange(len(samples)),samples)
+    return (np.clip(samples,-1,1)*32767).astype('<i2').tobytes()
+
+
 def _wav_to_pcm16k(wav_bytes: bytes) -> bytes:
     """Any WAV → 16 kHz mono s16le, whatever rate/channels/width it came in."""
     with wave.open(io.BytesIO(wav_bytes)) as w:
@@ -262,12 +277,7 @@ def _wav_to_pcm16k(wav_bytes: bytes) -> bytes:
         raise ValueError(f"unsupported WAV sample width {width}")
     if channels > 1:
         samples = samples.reshape(-1, channels).mean(axis=1)
-    if rate != SAMPLE_RATE:
-        n_out = int(len(samples) * SAMPLE_RATE / rate)
-        x_old = np.linspace(0, 1, len(samples), endpoint=False)
-        x_new = np.linspace(0, 1, n_out, endpoint=False)
-        samples = np.interp(x_new, x_old, samples).astype(np.float32)
-    return (np.clip(samples, -1, 1) * 32767).astype(np.int16).tobytes()
+    return samples_to_pcm16k(samples,rate)
 
 
 class NoBuiltinVoice(RuntimeError):
@@ -351,6 +361,21 @@ def stream(text: str, leveler: Leveler | None = None) -> Iterator[bytes]:
                 "Voice %r is missing %s; using system TTS for this utterance. "
                 "The selected voice remains unchanged.",
                 leveler.settings["id"], " and ".join(missing))
+        if leveler.settings["provider"] == "glados_local":
+            try:
+                from .glados_local import synthesize as glados_synthesize
+                first=glados_synthesize(text,leveler.settings)
+                chunks=iter(())
+            except Exception as exc:
+                logging.getLogger(__name__).warning('Local GLaDOS TTS failed (%s). Run setup-glados-voice.cmd; trying Clinical Synthetic AI, then system TTS. Selection unchanged.',exc)
+                try:
+                    from .kokoro_local import synthesize as local_synthesize
+                    fallback=next(p for p in voice_manager.list_profiles() if p['id']=='glados_synthetic' and p['provider']=='kokoro_local')
+                    first=local_synthesize(text,fallback)
+                    chunks=iter(())
+                except Exception as fallback_exc:
+                    logging.getLogger(__name__).warning('Clinical Synthetic AI fallback unavailable (%s); using system TTS.',fallback_exc)
+                    chunks=None
         if leveler.settings["provider"] == "kokoro_local":
             try:
                 from .kokoro_local import synthesize as local_synthesize

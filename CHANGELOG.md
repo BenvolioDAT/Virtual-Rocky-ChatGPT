@@ -5,6 +5,11 @@ latest work. A video matches the tagged version it was made with.
 
 ## Unreleased (V2, in progress)
 
+- Add optional CPU GLaDOS Local Piper/VITS speech through sherpa-onnx 1.13.8, with a lazy cached synthesizer, natural-speed profile, shared PCM conversion/processing, Kokoro/system fallback and retry without changing the saved voice.
+- Add validated personality `default_voice_id`, applied centrally on explicit identity changes: GLaDOS selects GLaDOS Local; Rocky restores Rocky Voice. Manual overrides survive ordinary turns, reload and restart. Existing GLaDOS prompt, Fish, Kokoro and system voices remain available.
+- Add explicit Windows/model setup with bounded HTTPS download, safe allowlisted tar extraction, required-asset validation, provenance and upstream attribution; external model weights remain ignored. Upstream release metadata provides no authoritative archive digest.
+- GLaDOS voice validation: 174 tests passed, syntax/diff checks and face-only startup/shutdown passed. Real Windows CPU synthesis produced mono 16 kHz signed 16-bit PCM through the full processing path, and a second sentence reused the model. Microphone/webcam, hardware speaker playback and live Fish playback were not exercised.
+
 - Add question-scoped Web Access with hosted-search verification, per-connection capability probing, clickable sources, and concise cached Open-Meteo weather in US units. The live ChatGPT-plan probe rejected hosted search with HTTP 400; unsupported connections report this rather than guessing.
 - Add independent GLaDOS-inspired character, original clinical theme, and a generic local Kokoro voice with optional subtle processing. Official v1.0 model/voice assets are pinned and hash checked, downloaded only through explicit setup, and excluded from Git.
 - Add explicit local SQLite facts/people/aliases with relevant bounded retrieval, enable/disable and confirmed deletion controls; private tool payloads are turn scoped.

@@ -1,7 +1,7 @@
 """Identity and conversational style, including names, wake phrases and prompts.
 
-PersonalityManager does not control TTS, face themes, screen vision or
-capabilities. Legacy voice fields are discarded before character validation.
+An optional voice preference applies only on explicit identity changes.
+Legacy inline voice settings are discarded before character validation.
 """
 import copy
 import json
@@ -23,7 +23,7 @@ def validate(data, source=None):
         logging.getLogger(__name__).warning(
             '%s: deprecated personality voice settings ignored; use a voice profile instead',
             source or data.get('id', 'personality'))
-    allowed = {'id','display_name','robot_name','description','character_prompt','example_replies','wake_phrases','canned_lines','reply_max_sentences'}
+    allowed = {'id','display_name','robot_name','description','character_prompt','example_replies','wake_phrases','canned_lines','reply_max_sentences','default_voice_id'}
     if set(data) - allowed: raise ValueError('unknown fields: ' + ', '.join(sorted(set(data)-allowed)))
     for key in ('id','display_name','robot_name','character_prompt'):
         if not isinstance(data.get(key),str) or not data[key].strip(): raise ValueError(f'{key} must be nonempty text')
@@ -38,13 +38,16 @@ def validate(data, source=None):
     limit=data.get('reply_max_sentences',3)
     if type(limit) is not int or not 1 <= limit <= 10: raise ValueError('reply_max_sentences must be 1 to 10')
     if not isinstance(data.get('description',''),str): raise ValueError('description must be text')
+    if 'default_voice_id' in data and (not isinstance(data['default_voice_id'],str) or not re.fullmatch(r'[a-z][a-z0-9_-]{0,63}',data['default_voice_id'])):
+        raise ValueError('default_voice_id must be a voice profile identifier')
     return copy.deepcopy(data)
 
 
 class PersonalityManager:
-    def __init__(self, folder=None, preferences=None):
+    def __init__(self, folder=None, preferences=None, voices=None):
         self.folder=Path(folder) if folder else (Path(sys.executable).parent / 'personalities' if getattr(sys,'frozen',False) else Path(__file__).resolve().parent.parent / 'personalities')
         self.preferences=preferences or PreferenceStore()
+        self._voices=voices
         self._lock=threading.RLock()
         self.errors=[]
         selected=self.preferences.load().get('active_personality','rocky')
@@ -89,7 +92,16 @@ class PersonalityManager:
             if profile_id not in self._profiles:
                 self._report(f'Personality {profile_id!r} unavailable; using Rocky.')
                 profile_id='rocky'
+            changed=self.active_id != profile_id
             self.active_id=profile_id; self._persist()
+            voice_id=self._profiles[profile_id].get('default_voice_id')
+            if changed and voice_id:
+                from .voice_manager import manager as default_voices
+                voices=self._voices if self._voices is not None else default_voices
+                if any(p['id']==voice_id for p in voices.list_profiles()):
+                    voices.set_active_profile(voice_id)
+                else:
+                    self._report(f'Default voice {voice_id!r} unavailable; keeping the selected voice.')
             return self.get_active_profile()
     def get_robot_name(self): return self.get_active_profile()['robot_name']
     def get_wake_phrases(self): return self.get_active_profile()['wake_phrases']

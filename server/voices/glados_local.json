@@ -1,0 +1,11 @@
+{
+  "id": "glados_local",
+  "display_name": "GLaDOS Local",
+  "description": "Local GLaDOS-style Piper/VITS model from dnhkng/GLaDOS and sherpa-onnx.",
+  "provider": "glados_local",
+  "speed": 1.0,
+  "effect": "none",
+  "level": 0.12,
+  "highpass_hz": 0,
+  "presence_db": 0
+}
