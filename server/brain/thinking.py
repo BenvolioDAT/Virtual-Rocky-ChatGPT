@@ -220,6 +220,13 @@ class RobotBrain:
         self._strip_images()
         self._trim_history()
 
+    def clear_conversation(self):
+        """Called at a turn boundary when changing identity."""
+        self.history.clear()
+        self._inflight = None
+        self._visual_source = None
+        self.emotion = 'neutral'
+
     def abandon(self) -> None:
         """Forget the question being answered right now (the human kept talking)."""
         if self._inflight is not None:
@@ -243,7 +250,7 @@ class RobotBrain:
             stream = self.client.chat.completions.create(
                 model=config.MODEL,
                 max_tokens=200,  # backstop; the sentence limit does the real work
-                messages=[{"role": "system", "content": personality.SYSTEM_PROMPT}, *self.history],
+                messages=[{"role": "system", "content": personality.system_prompt(virtual=getattr(self, 'virtual_body', False))}, *self.history],
                 tools=self.available_tools() if self.actions else openai.NOT_GIVEN,
                 stream=True,
             )

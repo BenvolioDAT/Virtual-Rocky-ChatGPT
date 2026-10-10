@@ -1,7 +1,7 @@
 """Mouth: turn the robot's words into sound.
 
 Two voices:
-  * Fish Audio (Rocky's real voice, config.TTS_VOICE_ID) when
+  * Fish Audio (active profile's voice, config.TTS_VOICE_ID) when
     FISH_AUDIO_API_KEY is set. Plain HTTPS POST asking for raw 16 kHz PCM. The response body
     streams, so the first audio arrives ~0.3 s in, long before the sentence
     is finished, and is passed straight on to the speaker.

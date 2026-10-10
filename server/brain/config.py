@@ -20,7 +20,6 @@ if _ENV_FILE.is_file():
             os.environ.setdefault(_k.strip(), _v)
 
 # The robot's name — the wake word is "hey <name>".
-ROBOT_NAME = "Rocky"
 
 # Your name — Rocky calls you this. Set HUMAN_NAME in server/.env so it
 # stays out of the repo; "friend" until you do.
@@ -69,10 +68,6 @@ PORT = 8765
 #                 Lifts a muffled voice; too much sounds thin and hissy.
 # The console page has sliders for level / bass cut / presence that apply
 # live; set the winners here to keep them.
-TTS_VOICE_ID = "6dd07916890445e59c5f019ad0fc7879"
-TTS_TEMPERATURE = 0.4
-TTS_TOP_P = 0.6
-REPLY_MAX_SENTENCES = 3
 TTS_LEVEL = 0.12
 TTS_HIGHPASS_HZ = 0.0
 TTS_PRESENCE_DB = 0.0
@@ -99,21 +94,12 @@ DEBUG_TTS_CHECK = False
 
 # Listening. The robot's mic when it is connected, the computer's otherwise.
 LISTEN_ON_START = True
-WAKE_PHRASES = [  # what speech-to-text tends to hear for "hey Rocky"
-    "hey rocky",
-    "hey rocket",
-    "hey rocking",
-    "hi rocky",
-    "a rocky",
-    "hey ricky",
-]
 STT_MODEL = "base.en"    # faster-whisper model: base.en ~0.3 s per utterance on an Apple
                          # Silicon Mac, small.en hears a little better but takes ~1 s
 # The Hugging Face commit of that model to download (Systran/faster-whisper-<STT_MODEL>).
 # Pinned so a changed upload can't be loaded unnoticed; set to None to take the latest.
 STT_REVISION = "3d3d5dee26484f91867d81cb899cfcf72b96be6c"
 STT_THREADS = 8          # CPU threads for transcription (0 = library default of 4)
-STT_PROMPT = f"Hey {ROBOT_NAME}. {ROBOT_NAME} is a robot."  # name hint for the model
 MIC_SOURCE = "auto"      # "robot" = the robot's mic, "mac" = MIC_DEVICE below,
                          # "auto" = robot when it's connected, else this computer
 MIC_DEVICE = os.environ.get("MIC_DEVICE") or None  # local input by name (set MIC_DEVICE in
@@ -140,15 +126,6 @@ CANCEL_MIN_SPEECH = 0.3
 DEBUG_SAVE_UTTERANCE = ""  # set to "debug/last_utterance.wav" to keep the last thing heard, for mic tuning
 AWAKE_SECONDS = 60.0     # after "hey Rocky" he stays awake; each thing you say
                          # resets this clock, and when it runs out he dozes off
-_NAME = ROBOT_NAME.lower()
-SLEEP_PHRASES = [        # any of these puts him to sleep until the next "hey <name>"
-    f"{_NAME} sleep",
-    f"{_NAME} go to sleep",
-    "go to sleep",
-    "goodnight",
-    "good night",
-    "stop listening",
-]
 # What he says as he goes to sleep: personality.py, LINES.
 
 # Semantic emotions. PhysicalBody maps new desktop emotions to firmware's original seven.
@@ -205,3 +182,19 @@ TRACK_LOST_SECONDS = 4.0   # no face this long → idle glances resume
 
 # How many conversation turns to remember before forgetting the oldest.
 MAX_HISTORY_TURNS = 20
+
+# Compatibility for existing consumers; character settings are never captured here.
+def __getattr__(name):
+    from .personality_manager import manager
+    if name == 'ROBOT_NAME': return manager.get_robot_name()
+    if name == 'WAKE_PHRASES': return manager.get_wake_phrases()
+    if name == 'STT_PROMPT':
+        robot = manager.get_robot_name()
+        return f'Hey {robot}. {robot} is a robot.'
+    if name == 'SLEEP_PHRASES':
+        robot = manager.get_robot_name().lower()
+        return [f'{robot} sleep', f'{robot} go to sleep', 'go to sleep', 'goodnight', 'good night', 'stop listening']
+    if name == 'REPLY_MAX_SENTENCES': return manager.get_reply_limit()
+    voice_keys={'TTS_VOICE_ID':'fish_voice_id','TTS_TEMPERATURE':'temperature','TTS_TOP_P':'top_p'}
+    if name in voice_keys: return manager.get_voice_settings()[voice_keys[name]]
+    raise AttributeError(name)

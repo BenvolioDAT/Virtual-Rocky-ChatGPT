@@ -20,3 +20,10 @@ a language model, and a cloned voice.
   the original loudness and gain cap, and a limiter that turns loud
   chunks down instead of clipping them. The bass-cut and presence
   sliders are still on the console, off by default.
+
+
+### Personality profiles
+
+- Editable JSON characters with shared core capability and honesty rules.
+- Live menu switching/reload, dynamic wake/name/voice settings, history clearing, persisted selection and safe Rocky recovery.
+- Original Nova, Gizmo, Pixel and Echo examples with regression tests.

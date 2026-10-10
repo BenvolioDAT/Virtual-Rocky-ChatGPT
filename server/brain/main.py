@@ -56,6 +56,8 @@ brain: RobotBrain | None = None  # created in main() once the event loop exists
 ears: Ears | None = None
 # (text, when speech began, when it ended, when the transcript was ready)
 heard: asyncio.Queue[tuple[str, float, float, float]] = asyncio.Queue()
+turn_lock = asyncio.Lock()
+brain_workers = set()
 speech_started = asyncio.Event()  # the human began a new turn (set by the ears)
 awake_until = 0.0  # while time.time() < this, he's awake: no wake word needed
 robot_speak_done = asyncio.Event()  # robot finished playing the last reply
@@ -178,6 +180,13 @@ async def handle_robot(websocket: websockets.ServerConnection) -> None:
             pick_mic_source()
 
 
+def personality_status():
+    from .personality_manager import manager
+    text = 'Personality changed to ' + manager.get_active_profile()['display_name'] + '.'
+    if manager.errors: text += ' ' + ' '.join(manager.errors)
+    return text
+
+
 async def handle_console_line(line: str) -> bool:
     """Returns False when the server should shut down."""
     line = line.strip()
@@ -187,6 +196,31 @@ async def handle_console_line(line: str) -> bool:
     cmd = cmd.lower()
     arg = arg.strip()
 
+    if cmd == "personality":
+        from .personality_manager import manager
+        if arg == 'list':
+            print('\n'.join(p['id'] + ': ' + p['display_name'] for p in manager.list_profiles()))
+        elif arg == 'folder':
+            import subprocess
+            if sys.platform == 'win32': os.startfile(str(manager.folder))
+            elif sys.platform == 'darwin': subprocess.Popen(['open',str(manager.folder)])
+            else: subprocess.Popen(['xdg-open',str(manager.folder)])
+        elif arg:
+            async with turn_lock:
+                # Interrupted streams may still be unwinding in their worker.
+                while brain_workers: await asyncio.sleep(.05)
+                if arg == 'reload': manager.reload_profiles()
+                else: manager.set_active_profile(arg)
+                if brain: brain.clear_conversation()
+                global awake_until
+                awake_until = 0.0
+                eyes.last_heard = eyes.last_said = ''
+                while not heard.empty(): heard.get_nowait()
+                await send_to_robot({'type':'emotion','name':'neutral'})
+                await send_to_robot({'type':'asleep','on':True})
+                print(personality_status())
+        else: print(personality_status())
+        return True
     if cmd == "quit":
         return False
     if cmd == "status":
@@ -385,7 +419,12 @@ class SpokenReply:
         return " ".join(self.spoken)
 
     def think_and_speak(self, question: str, jpeg: bytes | None, camera_wanted: bool = False) -> None:
-        threading.Thread(target=self._think, args=(question, jpeg, camera_wanted), daemon=True).start()
+        token = object()
+        brain_workers.add(token)
+        def work():
+            try: self._think(question, jpeg, camera_wanted)
+            finally: self.loop.call_soon_threadsafe(brain_workers.discard, token)
+        threading.Thread(target=work, daemon=True).start()
         threading.Thread(target=self._voice, daemon=True).start()
 
     def speak_fixed(self, text: str) -> None:
@@ -509,7 +548,12 @@ class SpokenReply:
             await self.loop.run_in_executor(None, body.play_pcm, bytes(buf))
 
 
-async def converse(question: str, ended_at: float | None = None, heard_at: float | None = None) -> bool:
+async def converse(*args, **kwargs):
+    async with turn_lock:
+        return await _converse_turn(*args, **kwargs)
+
+
+async def _converse_turn(question: str, ended_at: float | None = None, heard_at: float | None = None) -> bool:
     """Ask the brain, show the face, and speak the answer as it forms.
     Returns False if the human started talking again before Rocky spoke
     (the reply was dropped and the question is still open)."""
@@ -538,7 +582,7 @@ async def converse(question: str, ended_at: float | None = None, heard_at: float
         thinking = False
         if body.virtual: await send_to_robot({'type':'activity','name':'thinking','on':False})
     if not finished:
-        print("  (you kept talking — Rocky will hear the rest and answer once)")
+        print(f"  (you kept talking — {config.ROBOT_NAME} will hear the rest and answer once)")
         await send_to_robot({"type": "emotion", "name": "neutral"})
         return False
     if reply.text:
@@ -550,7 +594,12 @@ async def converse(question: str, ended_at: float | None = None, heard_at: float
     return True
 
 
-async def say(text: str) -> bytes:
+async def say(text: str):
+    async with turn_lock:
+        return await _say_turn(text)
+
+
+async def _say_turn(text: str) -> bytes:
     """Speak a fixed line: through the robot's speaker when it's connected,
     else the Mac. Ears are muted meanwhile so Rocky doesn't hear himself."""
     reply = SpokenReply(asyncio.get_running_loop(), Timeline(time.time()))

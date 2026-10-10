@@ -6,6 +6,7 @@ import os
 from PySide6.QtCore import Qt, QTimer, Signal, QObject, QPointF, QRectF
 from .ui_preferences import PRESETS, visible_position
 from . import config
+from .personality_manager import manager
 from PySide6.QtGui import QColor, QPainter, QPen, QPainterPath, QFont, QFontDatabase
 from PySide6.QtWidgets import QWidget, QMenu, QInputDialog, QPushButton, QMessageBox
 
@@ -46,7 +47,7 @@ class FaceWindow(QWidget):
         self.drag = None
         self.blink_until = 0
         self.next_blink = time.monotonic() + 3
-        self.setWindowTitle('Virtual Rocky')
+        self.setWindowTitle('Virtual ' + manager.get_robot_name())
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, always_on_top)
         self.setMinimumSize(160, 100)
@@ -70,7 +71,11 @@ class FaceWindow(QWidget):
         self.timer.start(33)
     def on_event(self, e):
         kind = e.get('type')
-        if kind == 'emotion':
+        if kind == 'personality':
+            self.setWindowTitle('Virtual ' + manager.get_robot_name())
+            self.status = e['text']
+            self.setToolTip(self.status)
+        elif kind == 'emotion':
             self.emotion = e.get('name') if e.get('name') in config.EMOTIONS else 'neutral'
             self.variant = random.randrange(3)
         elif kind == 'asleep':
@@ -225,6 +230,7 @@ class FaceWindow(QWidget):
             menu.addAction('Manage ChatGPT usage', lambda: __import__('webbrowser').open('https://chatgpt.com/#settings/Usage'))
             menu.addAction('Sign out of ChatGPT', lambda: self.control('chatgpt logout'))
             menu.addSeparator()
+        self.add_personality_menu(menu)
         self.add_screen_menu(menu)
         top = menu.addAction('Always on top'); top.setCheckable(True)
         top.setChecked(bool(self.windowFlags() & Qt.WindowType.WindowStaysOnTopHint))
@@ -239,11 +245,26 @@ class FaceWindow(QWidget):
         if action == top:
             self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, top.isChecked()); self.show()
         elif action == ask:
-            text, ok = QInputDialog.getText(self, 'Ask Rocky', 'Question:')
+            text, ok = QInputDialog.getText(self, self.ask_title(), 'Question:')
             if ok and text.strip(): self.control('ask ' + text.strip())
         elif action == listen: self.control('listen')
         elif action == track: self.control('track toggle')
         elif action == quit_action: self.close()
+
+    def ask_title(self):
+        return 'Ask ' + manager.get_robot_name()
+
+    def add_personality_menu(self, menu):
+        submenu = menu.addMenu('Personality')
+        for profile in manager.list_profiles():
+            action = submenu.addAction(profile['display_name'])
+            action.setCheckable(True)
+            action.setChecked(profile['id'] == manager.active_id)
+            action.triggered.connect(lambda checked=False, p=profile['id']: self.control('personality ' + p))
+        submenu.addSeparator()
+        submenu.addAction('Reload Personalities', lambda: self.control('personality reload'))
+        submenu.addAction('Open Personality Folder', lambda: self.control('personality folder'))
+        return submenu
 
     def add_screen_menu(self, menu):
         screen_menu = menu.addMenu('Screen Vision: ' + self.screen_status)

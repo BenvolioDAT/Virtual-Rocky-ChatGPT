@@ -51,6 +51,7 @@ class Runtime:
         config.MIC_SOURCE = 'mac'  # upstream's name for any PC microphone
         loop = asyncio.get_running_loop()
         core.main_loop = loop
+        self.emit({'type':'personality','text':core.personality_status()})
         core.body = VirtualBody(self.emit)
         self.provider = self.provider or os.environ.get('VIRTUAL_LLM_AUTH', 'api' if os.environ.get('LLM_API_KEY') else 'chatgpt')
         if self.provider == 'chatgpt':
@@ -64,6 +65,7 @@ class Runtime:
             self.emit({'type':'auth','mode':'api'})
             if not os.environ.get('LLM_API_KEY'):
                 print('Set LLM_API_KEY in server/.env for the API-provider option.')
+        core.brain.virtual_body = True
         # Serialize voice and typed turns so histories, TTS and mic muting cannot race.
         reply_lock = asyncio.Lock()
         original_converse, original_say = core.converse, core.say
@@ -95,7 +97,7 @@ class Runtime:
                 if startup and startup.done() and not ready_reported:
                     ready_reported = True
                     ready = core.ears is not None and core.ears.has_mac_mic
-                    text = 'Say hey Rocky' if ready else 'Mic unavailable — type a question'
+                    text = f'Say hey {config.ROBOT_NAME}' if ready else 'Mic unavailable — type a question'
                     if self.auth and not (self.auth.selected() or {}).get('signed_in'):
                         text = 'Click Continue with ChatGPT'
                     self.emit({'type':'status','text':text})
@@ -109,6 +111,10 @@ class Runtime:
                             self.screen_commands.put(command)
                         elif command.startswith('chatgpt '):
                             await self.auth_command(command[8:], reply_lock, core)
+                        elif command.startswith('personality'):
+                            async with reply_lock:
+                                await core.handle_console_line(command)
+                            self.emit({'type':'personality','text':core.personality_status()})
                         elif command == 'track toggle':
                             await core.set_tracking(not tracker.enabled)
                             if not tracker.enabled: self.emit({'type':'gaze','x':0,'y':0})
@@ -238,9 +244,10 @@ class Runtime:
                 enabled = await asyncio.to_thread(self.auth.sign_in, key, self.login_cancel)
                 core.brain.history.clear()
                 if not enabled:
-                    raise ChatGPTError('Signed in, but ChatGPT plan use was not enabled. Sign in again and allow Rocky to use your plan.')
+                    raise ChatGPTError('Signed in, but ChatGPT plan use was not enabled. Sign in again and allow Virtual Rocky to use your plan.')
                 await asyncio.to_thread(self.auth.models, True)
-            self.emit({'type':'status','text':'Connected — say hey Rocky'})
+            from . import config
+            self.emit({'type':'status','text':f'Connected — say hey {config.ROBOT_NAME}'})
         except Exception as exc:
             text = str(exc) if isinstance(exc,ChatGPTError) else 'ChatGPT sign-in failed. Try again.'
             if not self.stop_event.is_set():

@@ -229,14 +229,14 @@ def _wake_pattern() -> re.Pattern:
     return re.compile(rf"\b(?:{alts})\b[\s,.!?:;-]*", re.IGNORECASE)
 
 
-_WAKE_RE = _wake_pattern()
+
 
 
 def strip_wake_word(text: str) -> tuple[bool, str]:
     """('Hey Rocky, what's 9 times 16?') -> (True, "what's 9 times 16?").
     The question keeps its digits, punctuation and case — the brain needs
     them. Returns (False, text) when no wake phrase is present."""
-    m = _WAKE_RE.search(text)
+    m = _wake_pattern().search(text)
     if m:
         return True, text[m.end():].strip()
     return False, text.strip()

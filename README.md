@@ -545,3 +545,89 @@ makes no model requests. Ask “what just happened?” to supply a few relevant 
 images plus a fresh current image; static questions use current only. Stop,
 Pause or Disable clears the buffer. Active-window/detail crops and resizable face
 presets are also available. See [Screen Watch and face details](docs/screen-watch-and-face.md).
+
+
+## Personalities
+
+Right-click the face -> **Personality** -> select a character. Rocky remains the
+initial default. Original starters are Friendly Companion (Nova), Engineer
+(Gizmo), Gamer Buddy (Pixel), and Custom Example (Echo). The selected item is checked.
+Switching needs no restart: the current spoken turn finishes, old conversation
+and temporary visual-source context clear, the face sleeps, and name, wake words,
+voice, canned lines and window title update. Say the new character's wake phrase.
+Interrupted network streams may briefly delay switching while they finish closing.
+Screen Watch's local buffer stays available. All characters share the existing
+emotions, tool availability, Screen Vision privacy controls and visual honesty rules.
+
+Use **Open Personality Folder** to find profiles: `server/personalities/` in source
+installs, or `personalities/` beside the executable in packaged builds. Copy
+`example.json`, choose a unique ID, edit it, save as UTF-8 JSON, then select
+**Reload Personalities**. No Python edits are needed. JSON has no comments or trailing
+commas. Reload clears conversation history so edited instructions take effect.
+Invalid files are skipped and reported in the console/status. Missing or invalid
+selected profiles fall back to Rocky; a built-in recovery copy survives deletion
+of Rocky's file. For duplicate IDs the first valid file in filename order wins,
+and the duplicate is reported.
+
+Only the active profile ID is saved in the existing UI preferences alongside
+window settings (`%LOCALAPPDATA%/VirtualRocky/ui.json`), never in `.env`.
+Physical robot brains support these profiles too, without firmware changes.
+Local console commands: `personality`, `personality list`, `personality gamer`,
+`personality rocky`, `personality reload`, `personality folder`.
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Required unique lowercase ID; starts with a letter, uses letters/digits/underscore/hyphen, at most 64 characters. |
+| `display_name` | Required menu label. |
+| `robot_name` | Required name for title, spoken identity and transcription hint. |
+| `description` | Optional description. |
+| `character_prompt` | Required character/style text; cannot grant tools or override shared honesty/privacy rules. |
+| `example_replies` | Optional list of spoken examples with emotion tags. |
+| `wake_phrases` | Required nonempty list, including any desired transcription aliases. |
+| `canned_lines` | Required nonempty `wake`, `sleep`, `track_on`, `track_off` strings. |
+| `voice` | Optional `fish_voice_id`, `temperature`, `top_p`; numbers range 0-1, defaults 0.4/0.6. |
+| `reply_max_sentences` | Optional integer 1-10, default 3; enforced by both providers. |
+
+`{human_name}` in character text/examples/canned lines uses the existing private
+HUMAN_NAME setting. `{reply_max_sentences}` in character text uses the profile limit.
+The active name updates the speech-recognition hint for each transcription and
+name-based sleep commands. Only configured aliases wake the character: Nova won't
+wake to "Hey Rocky" unless that alias is explicitly in Nova's profile.
+
+Fish Audio uses the existing `FISH_AUDIO_API_KEY` secret configuration.
+**Never store API keys in profile files.** Unknown fields (including credentials)
+are rejected. Empty or omitted Fish voice ID uses the existing operating-system
+voice fallback. Rocky retains the project's existing voice; original starters
+have no commercial character voice IDs. Add an ID you have permission to use for
+custom voices. Speaker EQ and loudness remain shared controls.
+
+Complete example (copy and change its ID, name, wake phrases and character prompt):
+
+```json
+{
+  "id": "example",
+  "display_name": "Custom Example",
+  "robot_name": "Echo",
+  "description": "A curious, calm original desktop companion. Speak clear English and help with everyday questions.",
+  "character_prompt": "You are Echo. A curious, calm original desktop companion. Speak clear English and help with everyday questions.",
+  "example_replies": [
+    "[happy] Ready when you are."
+  ],
+  "wake_phrases": [
+    "hey echo",
+    "hi echo"
+  ],
+  "canned_lines": {
+    "wake": "What would you like to do?",
+    "sleep": "Goodnight. Call my name when you need me.",
+    "track_on": "Face tracking on.",
+    "track_off": "Face tracking off."
+  },
+  "voice": {
+    "fish_voice_id": "",
+    "temperature": 0.4,
+    "top_p": 0.6
+  },
+  "reply_max_sentences": 3
+}
+```

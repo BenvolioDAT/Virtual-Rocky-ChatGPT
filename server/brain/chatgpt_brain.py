@@ -49,6 +49,7 @@ def request_error(code):
 class ChatGPTBrain(RobotBrain):
     def __init__(self, auth, actions=None, client_factory=None, on_status=None):
         # Keep API-key/provider behavior untouched in the original RobotBrain.
+        self.virtual_body = True
         self.auth = auth
         self.actions = actions or {}
         self.history = []
@@ -80,7 +81,7 @@ class ChatGPTBrain(RobotBrain):
             token = self.auth.token(self._account_key)
             model = self.auth.model(self._account_key)
             tools = [{'type':'namespace','name':'rocky',
-                      'description':'Rocky webcam, optional desktop screen vision and face tracking abilities.',
+                      'description':'Companion webcam, optional desktop screen vision and face tracking abilities.',
                       'tools':[{'type':'function', **tool['function'], 'strict':False} for tool in self.available_tools()]}] if self.actions else []
             buf = ''
             raw = []
@@ -94,7 +95,7 @@ class ChatGPTBrain(RobotBrain):
                 with self.client_factory(api_key=token, base_url=RESOURCE, max_retries=0,
                                          timeout=45) as client:
                     with client.responses.create(model=model,
-                        instructions=personality.SYSTEM_PROMPT + '\nYou are the virtual desktop version. Your webcam is fixed and cannot turn; pupils can move.',
+                        instructions=personality.system_prompt(virtual=getattr(self, 'virtual_body', False)),
                         input=response_input(self.history), tools=tools, store=False, stream=True) as stream:
                         for event in stream:
                             if cancelled.is_set(): raise Interrupted()

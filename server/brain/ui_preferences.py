@@ -1,7 +1,10 @@
 """Non-sensitive window preferences only. No credentials or image storage."""
 import json
 import os
+import threading
 from pathlib import Path
+
+_STORE_LOCK = threading.RLock()
 
 PRESETS = {'Tiny':(160,100), 'Small':(240,150), 'Normal':(320,200),
            'Large':(480,300), 'Huge':(640,400)}
@@ -24,10 +27,14 @@ class PreferenceStore:
         try:
             data = json.loads(self.path.read_text(encoding='utf-8'))
             if not isinstance(data,dict): return {}
-            return {k:v for k,v in data.items() if k in ('x','y','width','height','always_on_top','preset')}
+            return {k:v for k,v in data.items() if k in ('x','y','width','height','always_on_top','preset','active_personality')}
         except (OSError,ValueError): return {}
     def save(self, data):
-        allowed = {k:v for k,v in data.items() if k in ('x','y','width','height','always_on_top','preset')}
+        with _STORE_LOCK:
+            self._save(data)
+    def _save(self, data):
+        data = self.load() | data
+        allowed = {k:v for k,v in data.items() if k in ('x','y','width','height','always_on_top','preset','active_personality')}
         self.path.parent.mkdir(parents=True,exist_ok=True)
         temp = self.path.with_suffix('.tmp')
         temp.write_text(json.dumps(allowed),encoding='utf-8')
