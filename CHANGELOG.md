@@ -5,6 +5,10 @@ latest work. A video matches the tagged version it was made with.
 
 ## Unreleased (V2, in progress)
 
+- Complete the voice boundary cleanup: remove old TTS config aliases, read console tuning directly from VoiceManager, and include filenames in ignored legacy-personality voice warnings.
+- Preserve a guaranteed system fallback and explain missing Fish configuration without changing the selected profile; empty Fish responses now fall back to system speech.
+- Voice cleanup validation: all 120 tests passed, including 12 added boundary regressions for legacy profiles, migration precedence, console ownership, concurrent selection, history preservation and TTS-only voice testing; syntax and diff checks passed.
+
 - Separate personality, voice, and virtual face theme selection with independent persistence and safe reload/fallback.
 - Migrate bundled Rocky Fish settings into a voice profile; ignore legacy character voice fields with a warning.
 - Add explicit system TTS, voice testing, six OLED themes, folder controls, local selection commands, and Companion Setup.

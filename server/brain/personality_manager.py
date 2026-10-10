@@ -1,4 +1,8 @@
-"""Validated, data-only character profiles. No credentials or capability switches."""
+"""Identity and conversational style, including names, wake phrases and prompts.
+
+PersonalityManager does not control TTS, face themes, screen vision or
+capabilities. Legacy voice fields are discarded before character validation.
+"""
 import copy
 import json
 import logging
@@ -11,9 +15,15 @@ from .default_personality import ROCKY
 from .ui_preferences import PreferenceStore
 
 
-def validate(data):
+def validate(data, source=None):
     if not isinstance(data, dict): raise ValueError('profile must be an object')
-    allowed = {'id','display_name','robot_name','description','character_prompt','example_replies','wake_phrases','canned_lines','voice','reply_max_sentences'}
+    data = dict(data)
+    if 'voice' in data:
+        data.pop('voice')
+        logging.getLogger(__name__).warning(
+            '%s: deprecated personality voice settings ignored; use a voice profile instead',
+            source or data.get('id', 'personality'))
+    allowed = {'id','display_name','robot_name','description','character_prompt','example_replies','wake_phrases','canned_lines','reply_max_sentences'}
     if set(data) - allowed: raise ValueError('unknown fields: ' + ', '.join(sorted(set(data)-allowed)))
     for key in ('id','display_name','robot_name','character_prompt'):
         if not isinstance(data.get(key),str) or not data[key].strip(): raise ValueError(f'{key} must be nonempty text')
@@ -25,12 +35,10 @@ def validate(data):
     if not data.get('wake_phrases'): raise ValueError('wake_phrases required')
     lines=data.get('canned_lines')
     if not isinstance(lines,dict) or any(not isinstance(lines.get(k),str) or not lines[k].strip() for k in ('wake','sleep','track_on','track_off')): raise ValueError('four canned_lines required')
-    if 'voice' in data:
-        logging.getLogger(__name__).warning('Personality %s: deprecated voice field ignored', data['id'])
     limit=data.get('reply_max_sentences',3)
     if type(limit) is not int or not 1 <= limit <= 10: raise ValueError('reply_max_sentences must be 1 to 10')
     if not isinstance(data.get('description',''),str): raise ValueError('description must be text')
-    return copy.deepcopy({k:v for k,v in data.items() if k != 'voice'})
+    return copy.deepcopy(data)
 
 
 class PersonalityManager:
@@ -55,7 +63,7 @@ class PersonalityManager:
             for path in paths:
                 try:
                     if path.stat().st_size > 100000: raise ValueError('profile too large')
-                    p=validate(json.loads(path.read_text(encoding='utf-8')))
+                    p=validate(json.loads(path.read_text(encoding='utf-8')), source=path.name)
                     if p['id'] in profiles: raise ValueError('duplicate id '+p['id'])
                     profiles[p['id']]=p
                 except (OSError,ValueError,TypeError,RecursionError) as exc: self._report(f'{path.name}: {exc}')

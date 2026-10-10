@@ -52,7 +52,7 @@ class ProfileTests(unittest.TestCase):
         (self.folder/'nova.json').unlink()
         restored.reload_profiles(); self.assertEqual(restored.active_id,'rocky')
         self.assertTrue(restored.errors)
-    def test_dynamic_name_wake_canned_voice_and_core(self):
+    def test_dynamic_name_wake_canned_and_core(self):
         with self.patches():
             self.assertTrue(ears.strip_wake_word('Hey, Rocky!')[0])
             before=personality.system_prompt()
@@ -143,3 +143,21 @@ class ProfileTests(unittest.TestCase):
     def test_invalid_saved_id_is_safe(self):
         self.store.save({'active_personality':[]})
         self.assertEqual(PersonalityManager(self.folder,self.store).active_id,'rocky')
+
+    def test_legacy_voice_is_discarded_with_filename_warning(self):
+        original=copy.deepcopy(self.nova)
+        with self.assertLogs('brain.personality_manager',level='WARNING') as logs:
+            self.manager.reload_profiles()
+        self.assertTrue(any('nova.json: deprecated personality voice settings ignored; use a voice profile instead' in line for line in logs.output))
+        self.manager.set_active_profile('nova')
+        self.assertNotIn('voice',self.manager.get_active_profile())
+        self.assertFalse(hasattr(self.manager,'get_voice_settings'))
+        self.assertEqual(json.loads((self.folder/'nova.json').read_text(encoding='utf-8')),original)
+
+    def test_personality_accepts_legacy_voice_without_validating_tts(self):
+        for legacy in (None, [], 'old', {'provider':'unsupported','temperature':999}):
+            data=copy.deepcopy(ROCKY); data['voice']=legacy
+            with self.assertLogs('brain.personality_manager',level='WARNING'):
+                profile=validate(data)
+            self.assertNotIn('voice',profile)
+            self.assertEqual(profile,ROCKY)

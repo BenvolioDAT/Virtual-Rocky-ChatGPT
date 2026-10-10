@@ -148,3 +148,131 @@ class CompanionTests(unittest.TestCase):
         for path in (server/'voices').glob('*.json'):
             data=json.loads(path.read_text(encoding='utf-8')); voice_validate(data)
             self.assertNotIn('API_KEY',path.read_text(encoding='utf-8'))
+
+    def test_saved_voice_wins_over_personality_migration(self):
+        self.store.save({'active_personality':'gamer','active_voice':'rocky_voice'})
+        restored=VoiceManager(self.voices.folder,self.store)
+        self.assertEqual(restored.active_id,'rocky_voice')
+        self.store.save({'active_personality':'rocky','active_voice':'default'})
+        self.assertEqual(VoiceManager(self.voices.folder,self.store).active_id,'default')
+
+    def test_duplicate_voice_and_invalid_active_reload(self):
+        duplicate=self.voices.get_active_profile() | dict(fish_voice_id='duplicate')
+        (self.voices.folder/'z_duplicate.json').write_text(json.dumps(duplicate),encoding='utf-8')
+        with self.assertLogs('brain.data_profiles',level='WARNING') as logs:
+            self.voices.reload_profiles()
+        self.assertTrue(any('z_duplicate.json: duplicate id' in text for text in logs.output))
+        self.assertEqual(self.voices.get_fish_voice_id(),'reference')
+        (self.voices.folder/'z_duplicate.json').unlink()
+        self.write('voices',self.voices.get_active_profile() | dict(level=-1))
+        self.voices.reload_profiles()
+        self.assertEqual(self.voices.get_provider(),'system')
+        self.assertEqual(self.store.load()['active_voice'],'default')
+        self.assertEqual(self.people.active_id,'rocky')
+
+    def test_system_fallback_survives_missing_or_overridden_default(self):
+        self.write('voices',DEFAULT | dict(provider='fish',fish_voice_id='reference'))
+        self.voices.set_active_profile('default')
+        self.voices.reload_profiles()
+        self.assertEqual(self.voices.get_provider(),'system')
+        self.assertTrue(any('fallback profile must use the system provider' in error for error in self.voices.errors))
+        (self.voices.folder/'default.json').unlink()
+        self.voices.reload_profiles()
+        self.assertEqual(self.voices.get_active_profile(),DEFAULT)
+
+    def test_legacy_personality_cannot_supply_runtime_voice(self):
+        from brain import mouth
+        legacy=ROCKY | dict(id='gamer',display_name='Gamer Buddy',robot_name='Pixel',voice=dict(fish_voice_id='ignored',temperature=0,top_p=0))
+        self.write('personalities',legacy)
+        self.people.reload_profiles()
+        self.people.set_active_profile('gamer')
+        with self.patches():
+            settings=mouth.Leveler().settings
+        self.assertEqual(settings['fish_voice_id'],'reference')
+        self.assertEqual((settings['temperature'],settings['top_p']),(.2,.8))
+        self.assertNotIn('voice',self.people.get_active_profile())
+
+    def test_console_and_tts_do_not_read_old_config_aliases(self):
+        from brain import main,config,mouth
+        aliases=('TTS_VOICE_ID','TTS_TEMPERATURE','TTS_TOP_P','TTS_LEVEL','TTS_HIGHPASS_HZ','TTS_PRESENCE_DB')
+        for key in aliases: self.assertFalse(hasattr(config,key),key)
+        with self.patches(), patch.object(config,'TTS_LEVEL',99,create=True), patch.object(config,'TTS_VOICE_ID','ignored',create=True):
+            asyncio.run(main._console_command('voice',{'key':'TTS_LEVEL','value':.22}))
+            self.assertEqual(main.console_state()['voice']['TTS_LEVEL'],.22)
+            settings=mouth.Leveler().settings
+            self.assertEqual(settings['level'],.22)
+            self.assertEqual(settings['fish_voice_id'],'reference')
+            self.assertEqual(config.TTS_LEVEL,99)
+
+    def test_voice_commands_preserve_conversation_screen_and_camera(self):
+        from brain import main
+        from brain.screen import screen,screen_manager
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        brain=SimpleNamespace(history=[{'role':'assistant','content':'remember'}],_visual_source='screen',clear_conversation=Mock())
+        camera=object(); tracker=object()
+        previous=(copy.deepcopy(brain.history),screen.state,copy.deepcopy(screen.watch_info),main.eyes.last_heard,main.eyes.last_said)
+        with self.patches(), patch.object(main,'brain',brain), patch.object(main,'tracker',tracker), patch.object(main.eyes,'latest',return_value=camera), patch.object(main,'send_to_robot',new=AsyncMock()), patch.object(screen,'request',side_effect=AssertionError('screen state changed')) as screen_request, patch.object(screen,'disconnect') as disconnect, patch.object(screen_manager,'disable') as disable:
+            for command in ('voice default','voice reload','voice rocky_voice'):
+                asyncio.run(main.handle_console_line(command))
+            brain.clear_conversation.assert_not_called()
+            self.assertEqual(brain.history,previous[0]); self.assertEqual(brain._visual_source,'screen')
+            self.assertEqual(screen.state,previous[1]); self.assertEqual(screen.watch_info,previous[2])
+            screen_request.assert_not_called(); disconnect.assert_not_called(); disable.assert_not_called()
+            self.assertEqual((main.eyes.last_heard,main.eyes.last_said),previous[3:])
+            self.assertIs(main.eyes.latest(),camera); self.assertIs(main.tracker,tracker)
+
+    def test_voice_test_runs_tts_without_brain_or_history_changes(self):
+        from brain import main,mouth
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        brain=SimpleNamespace(history=[{'role':'assistant','content':'remember'}],reply=Mock(side_effect=AssertionError('LLM called')))
+        captured=[]
+        async def consume(reply,interruptible=True):
+            while await reply._next() is not None: pass
+            return True
+        def system(text): captured.append(text); return b'\x01\x00'*50
+        self.voices.set_active_profile('default'); self.voices.update_tuning('highpass_hz',300)
+        with self.patches(), patch.object(main,'brain',brain), patch.object(main,'turn_lock',asyncio.Lock()), patch.object(main.SpokenReply,'play',consume), patch.object(mouth,'_synthesize_builtin',side_effect=system), patch.object(mouth,'_fish_stream',side_effect=AssertionError('Fish called')), patch.object(mouth.Equalizer,'process',autospec=True,side_effect=lambda eq,x:x) as eq:
+            asyncio.run(main.handle_console_line('voice test'))
+        self.assertEqual(captured,['Voice test. Hello, friend.'])
+        brain.reply.assert_not_called()
+        self.assertEqual(brain.history,[{'role':'assistant','content':'remember'}])
+        self.assertEqual(len(eq.call_args.args[0].stages),2)
+
+    def test_missing_fish_configuration_reports_reason_without_changing_voice(self):
+        from brain import mouth
+        for reference,key,reason in [('reference','','FISH_AUDIO_API_KEY'),('','present','a Fish reference ID')]:
+            profile=self.voices.get_active_profile() | dict(fish_voice_id=reference)
+            with self.patches(), patch.object(self.voices,'get_active_profile',return_value=profile), patch.dict('os.environ',{'FISH_AUDIO_API_KEY':key}), patch.object(mouth,'_synthesize_builtin',return_value=b'\x01\x00'*50), self.assertLogs('brain.mouth',level='WARNING') as logs:
+                self.assertTrue(mouth.synthesize('Hello'))
+            self.assertIn(reason,logs.output[0]); self.assertIn('selected voice remains unchanged',logs.output[0])
+            self.assertEqual(self.voices.active_id,'rocky_voice')
+
+    def test_empty_fish_response_falls_back_instead_of_silent_audio(self):
+        from brain import mouth
+        with self.patches(), patch.dict('os.environ',{'FISH_AUDIO_API_KEY':'test'}), patch.object(mouth,'_fish_stream',return_value=iter([])), patch.object(mouth,'_synthesize_builtin',return_value=b'\x01\x00'*50) as system:
+            self.assertTrue(mouth.synthesize('Hello'))
+        system.assert_called_once(); self.assertEqual(self.voices.active_id,'rocky_voice')
+
+    def test_concurrent_switches_produce_coherent_voice_snapshots(self):
+        from concurrent.futures import ThreadPoolExecutor
+        import threading
+        first=self.voices.get_active_profile()
+        second=first | dict(id='alternate',display_name='Alternate',fish_voice_id='alternate',temperature=.7,top_p=.3,level=.25,highpass_hz=300,presence_db=6)
+        self.write('voices',second); self.voices.reload_profiles()
+        fields=('id','fish_voice_id','temperature','top_p','level','highpass_hz','presence_db')
+        expected={tuple(p[field] for field in fields) for p in (first,second)}
+        barrier=threading.Barrier(2)
+        def switch():
+            barrier.wait(timeout=5)
+            for i in range(100): self.voices.set_active_profile('alternate' if i%2 else 'rocky_voice')
+        def read():
+            barrier.wait(timeout=5)
+            for i in range(1000):
+                snapshot=self.voices.get_active_profile()
+                self.assertIn(tuple(snapshot[field] for field in fields),expected)
+                snapshot['fish_voice_id']='mutated copy'
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            workers=[pool.submit(switch),pool.submit(read)]
+            for worker in workers: worker.result(timeout=15)

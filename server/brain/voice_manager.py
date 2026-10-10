@@ -1,4 +1,10 @@
-"""Voice selection owns synthesis and tuning, never character identity."""
+"""Authoritative TTS provider, reference, synthesis and speaker-tuning profiles.
+
+The saved personality ID is consulted only for one-time migration when no voice
+selection exists. Subsequent personality changes never affect this manager.
+Consumers should snapshot get_active_profile() once per reply so selection and
+reload cannot change settings halfway through audio generation.
+"""
 import copy
 from .data_profiles import DataProfileManager, header, number
 from .ui_preferences import PreferenceStore
@@ -9,6 +15,8 @@ def validate(data):
     header(data,set(DEFAULT))
     data=copy.deepcopy(data)
     if data.get('provider') not in ('system','fish'): raise ValueError('provider must be system or fish')
+    if data['id'] == DEFAULT['id'] and data['provider'] != 'system':
+        raise ValueError('the default fallback profile must use the system provider')
     voice=data.setdefault('fish_voice_id','')
     if not isinstance(voice,str) or len(voice)>256 or any(ord(c)<32 for c in voice): raise ValueError('invalid fish_voice_id')
     for key,default,low,high in [('temperature',.4,0,1),('top_p',.6,0,1),('level',.12,.01,.4),('highpass_hz',0,0,600),('presence_db',0,-12,12)]: number(data,key,default,low,high)

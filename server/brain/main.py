@@ -82,6 +82,12 @@ VOICE_TUNABLE = {           # speaker tuning the console may change live (mouth.
     "TTS_HIGHPASS_HZ": (0.0, 600.0),
     "TTS_PRESENCE_DB": (0.0, 12.0),
 }
+# Keep the existing HTTP console field names without reading config aliases.
+VOICE_FIELDS = {
+    "TTS_LEVEL": "level",
+    "TTS_HIGHPASS_HZ": "highpass_hz",
+    "TTS_PRESENCE_DB": "presence_db",
+}
 
 
 async def send_to_robot(payload: dict) -> bool:
@@ -681,6 +687,8 @@ async def set_volume(level: float) -> None:
 
 def console_state() -> dict:
     """Extra fields for /status: everything the page shows beyond the camera."""
+    from .voice_manager import manager as voices
+    voice = voices.get_active_profile()  # One coherent snapshot for the sliders.
     now = time.time()
     return {
         "robot": robot_socket is not None,
@@ -694,7 +702,7 @@ def console_state() -> dict:
         "awake": now < awake_until,
         "awake_for": max(0.0, awake_until - now),
         "emotion": current_emotion,
-        "voice": {k: getattr(config, k) for k in VOICE_TUNABLE},
+        "voice": {key: voice[field] for key, field in VOICE_FIELDS.items()},
         "head_held": head_held,
         "tracking_enabled": tracker.enabled if tracker is not None else False,
         "volume": speaker_volume,
@@ -778,8 +786,7 @@ async def _console_command(action: str, payload: dict) -> dict:
             raise ValueError(f"voice settings: {', '.join(VOICE_TUNABLE)}")
         value = _number(payload, "value", *VOICE_TUNABLE[key])
         from .voice_manager import manager as voices
-        keys={'TTS_LEVEL':'level','TTS_HIGHPASS_HZ':'highpass_hz','TTS_PRESENCE_DB':'presence_db'}
-        voices.update_tuning(keys[key],value)
+        voices.update_tuning(VOICE_FIELDS[key],value)
         print(f"console: {key} = {value:g} (until reload/restart; edit the voice profile to keep)")
     else:
         raise ValueError(f"no such control: {action}")

@@ -17,8 +17,7 @@ class CharacterTests(unittest.TestCase):
         for key in ("wake", "sleep", "track_on", "track_off"):
             self.assertTrue(personality.LINES.get(key), f"missing the {key} line")
 
-    def test_voice_settings(self):
-        self.assertEqual(len(config.TTS_VOICE_ID), 32)
+    def test_dynamic_character_name(self):
         self.assertIn(f"hey {config.ROBOT_NAME.lower()}", config.WAKE_PHRASES)
         self.assertIn(config.ROBOT_NAME, config.STT_PROMPT)
 

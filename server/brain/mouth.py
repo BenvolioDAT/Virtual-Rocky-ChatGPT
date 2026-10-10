@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import os
 import re
 import ssl
@@ -173,7 +174,7 @@ class Leveler:
     fact. Each chunk (~130 ms) gets a loudness reading; a smoothed estimate
     follows it upward over ~0.3 s and downward over ~1.5 s, ignoring
     near-silence so gaps don't pump up the noise. The gain steers toward
-    TTS_LEVEL / estimate, capped at TTS_MAX_GAIN, and is ramped
+    the selected profile's level / estimate, capped at TTS_MAX_GAIN, and is ramped
     across each chunk so nothing clicks. The shape inside a chunk (syllables)
     is kept. The equalizer runs first, so the level is judged on
     what the speaker will actually get. Use one Leveler per reply so its
@@ -314,13 +315,24 @@ def stream(text: str, leveler: Leveler | None = None) -> Iterator[bytes]:
     try:
         chunks: Iterator[bytes] | None = None
         first = b""
-        if fish_available(leveler.settings):
+        available = fish_available(leveler.settings)
+        if available:
             try:
                 chunks = _fish_stream(text, leveler.settings)
                 first = next(chunks, b"")
+                if not first:
+                    raise RuntimeError("Fish Audio returned no audio")
             except Exception as e:  # network, auth, bad voice id... still speak
                 print(f"(fish audio failed, using the built-in voice: {e})")
                 chunks = None
+        if leveler.settings["provider"] == "fish" and not available:
+            missing = []
+            if not leveler.settings["fish_voice_id"]: missing.append("a Fish reference ID")
+            if not os.environ.get("FISH_AUDIO_API_KEY"): missing.append("FISH_AUDIO_API_KEY")
+            logging.getLogger(__name__).warning(
+                "Voice %r is missing %s; using system TTS for this utterance. "
+                "The selected voice remains unchanged.",
+                leveler.settings["id"], " and ".join(missing))
         if chunks is None:
             try:
                 first = _synthesize_builtin(text)

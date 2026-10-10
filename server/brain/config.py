@@ -45,35 +45,17 @@ MODEL = os.environ.get("LLM_MODEL", "anthropic/claude-haiku-4.5")
 # WebSocket port the robot connects to.
 PORT = 8765
 
-# Rocky's voice and how much he says. The character itself (system prompt,
-# canned lines) is in personality.py. Voice settings live in voices/*.json.
-#   TTS_VOICE_ID  Fish Audio (fish.audio) voice: open the voice's page on the
-#                 site and copy the 32-char ID from the URL. Needs
-#                 FISH_AUDIO_API_KEY in server/.env.
-#   TTS_TEMPERATURE / TTS_TOP_P
-#                 Fish generation settings. Lower = steadier, fewer
-#                 hallucinated sounds/laughs/extra words (a known quirk of
-#                 generated speech); higher = more expressive. Fish's
-#                 defaults are 0.7 / 0.7.
-#   REPLY_MAX_SENTENCES
-#                 the prompt asks for at most this many, and the server cuts
-#                 anything past it before it's spoken (keeps voice cost down).
-#   TTS_LEVEL     loudness the voice is held to (RMS, 0..1; see TTS_MAX_GAIN).
-#   TTS_HIGHPASS_HZ
-#                 bass cut before the speaker, 0 = off. The small speaker
-#                 can't reproduce bass; it just rattles the shell. A deep
-#                 voice wants 250-350.
-#   TTS_PRESENCE_DB
-#                 boost above ~1.5 kHz, where speech clarity lives, 0 = off.
-#                 Lifts a muffled voice; too much sounds thin and hissy.
-# The console page has sliders for level / bass cut / presence that apply
-# live; edit the selected voice profile to keep them.
+# Character names, wake phrases and sentence limits come from PersonalityManager.
+# TTS provider, reference ID, generation parameters and EQ come from VoiceManager
+# and server/voices/*.json. No voice-selection config aliases are retained.
+# The console's speaker sliders edit the selected profile in memory; edit its
+# JSON to keep tuning after reload/restart. Fish credentials remain in .env.
 
 # Text-to-speech. The selected voice profile controls provider and tuning.
 TTS_FALLBACK_VOICE = "Fred"  # built-in voice used until Fish Audio is set up: a macOS `say`
                              # voice name (`say -v ?` lists them); Windows and Linux use their default
 # Loudness. Fish's level wanders from line to line, so the audio goes through
-# an automatic gain control (mouth.Leveler) that holds it near TTS_LEVEL
+# an automatic gain control (mouth.Leveler) that holds it near the selected voice profile's level
 # (RMS, 0..1) using at most TTS_MAX_GAIN of boost, with a soft limiter on
 # the peaks. 0.12 / 6.0 are the values of the original build (2026-09-06),
 # which sounded right on the robot's speaker; 0.26 drove every peak into
@@ -192,8 +174,4 @@ def __getattr__(name):
         robot = manager.get_robot_name().lower()
         return [f'{robot} sleep', f'{robot} go to sleep', 'go to sleep', 'goodnight', 'good night', 'stop listening']
     if name == 'REPLY_MAX_SENTENCES': return manager.get_reply_limit()
-    voice_keys={'TTS_VOICE_ID':'fish_voice_id','TTS_TEMPERATURE':'temperature','TTS_TOP_P':'top_p','TTS_LEVEL':'level','TTS_HIGHPASS_HZ':'highpass_hz','TTS_PRESENCE_DB':'presence_db'}
-    if name in voice_keys:
-        from .voice_manager import manager as voices
-        return voices.get_active_profile()[voice_keys[name]]
     raise AttributeError(name)
